@@ -1,4 +1,4 @@
-import { auth, db } from './firebase'; // Removed storage import to avoid errors
+import { auth, db } from './firebase'; 
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -21,21 +21,18 @@ import {
 export const signUpUser = async (email, password, userData) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
-  
   await setDoc(doc(db, 'users', user.uid), {
     ...userData,
     email: user.email,
     createdAt: serverTimestamp(),
     verified: true
   });
-  
   return { uid: user.uid, email: user.email, ...userData };
 };
 
 export const loginUser = async (email, password) => {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
-  
   const userDoc = await getDoc(doc(db, 'users', user.uid));
   return { uid: user.uid, email: user.email, ...userDoc.data() };
 };
@@ -44,30 +41,35 @@ export const logoutUser = async () => {
   await signOut(auth);
 };
 
-// --- CORRECTED LISTING FUNCTION (NO STORAGE) ---
+// --- LISTING FUNCTIONS (Optimized for Free Tier) ---
 export const createListing = async (listingData) => {
   try {
-    // We removed uploadImage here. 
-    // This now saves the 'image' URL directly to the database.
+    console.log("Firebase Function: Sending data to Firestore...");
     const docRef = await addDoc(collection(db, 'listings'), {
       ...listingData,
       createdAt: serverTimestamp()
     });
+    console.log("Firebase Function: Success! ID:", docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error("Error creating listing:", error);
+    console.error("Firebase Function Error:", error);
     throw error;
   }
 };
 
 export const getListings = async () => {
-  const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
-  const querySnapshot = await getDocs(q);
-  const listings = [];
-  querySnapshot.forEach((doc) => {
-    listings.push({ id: doc.id, ...doc.data() });
-  });
-  return listings;
+  try {
+    const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    const listings = [];
+    querySnapshot.forEach((doc) => {
+      listings.push({ id: doc.id, ...doc.data() });
+    });
+    return listings;
+  } catch (error) {
+    console.error("Error fetching listings:", error);
+    return [];
+  }
 };
 
 // --- REQUEST FUNCTIONS ---
@@ -87,9 +89,6 @@ export const getRequests = async () => {
     requests.push({ id: doc.id, ...doc.data() });
   });
   return requests;
-};
-
-// --- AUTH STATE LISTENER ---
-export const authStateListener = (callback) => {
+};export const authStateListener = (callback) => {
   return onAuthStateChanged(auth, callback);
 };
