@@ -42,34 +42,21 @@ function App() {
     } catch (err) { alert(err.message); }
   };
 
-  const handlePost = async (e) => {
-    e.preventDefault();
-    console.log("App.js: 'Post' button clicked");
-    setLoading(true);
+  const handlePost = async () => {
+  setLoading(true); // 1. Start "Syncing..."
+  
+  try {
+    await createListing(itemData); // 2. Upload the item
     
-    try {
-      const listingData = {
-        name: itemName,
-        price: price,
-        image: imageUrl || "https://via.placeholder.com/150",
-        seller: user.email,
-        type: 'Sell'
-      };
-
-      console.log("App.js: Calling createListing with:", listingData);
-      await createListing(listingData);
-      
-      alert("🎉 Item Posted Successfully!");
-      setItemName(''); setPrice(''); setImageUrl('');
-      setView('market');
-      refreshData();
-    } catch (err) {
-      console.error("App.js Error:", err);
-      alert("Post Failed: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    alert("🎉 Success! Item is now live."); // 3. Show a message
+    setScreen('home'); // 4. Automatically go back to Home screen
+    
+  } catch (error) {
+    alert("Oh no! Something went wrong.");
+  } finally {
+    setLoading(false); // 5. Stop the "Syncing" animation
+  }
+};
 
   const handleRequest = async (e) => {
     e.preventDefault();
@@ -101,7 +88,7 @@ function App() {
     <div className="min-h-screen bg-gray-50 pb-24">
       <nav className="bg-red-700 p-4 text-white flex justify-between items-center shadow-lg font-bold italic tracking-tighter">
         <span>NUST MARKET</span>
-        <button onClick={logoutUser} className="bg-white/20 p-2 rounded-lg"><LogOut size={20}/></button>
+        <button onClick={logoutUser} title="Logout" className="bg-white/20 p-2 rounded-lg"><LogOut size={20}/></button>
       </nav>
 
       <div className="p-4 max-w-md mx-auto">
@@ -125,7 +112,7 @@ function App() {
             <h2 className="text-xl font-bold italic uppercase tracking-tighter">Requests Board</h2>
             <form onSubmit={handleRequest} className="bg-white p-4 rounded-xl shadow border mb-4 flex gap-2">
               <input required value={reqText} className="flex-1 text-sm outline-none" placeholder="What do you need?" onChange={e => setReqText(e.target.value)} />
-              <button className="bg-red-700 text-white p-2 rounded-lg"><Send size={16}/></button>
+              <button title="Send Request" className="bg-red-700 text-white p-2 rounded-lg"><Send size={16}/></button>
             </form>
             {requests.map(req => (
               <div key={req.id} className="bg-white p-4 rounded-xl border-l-4 border-l-red-700 shadow-sm">
@@ -153,9 +140,9 @@ function App() {
       </div>
 
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-xs bg-white/90 backdrop-blur shadow-2xl rounded-full p-2 flex justify-around border border-slate-200 z-50">
-        <button onClick={() => setView('market')} className={`p-4 rounded-full transition-all ${view === 'market' ? 'bg-red-700 text-white shadow-lg' : 'text-slate-400'}`}><ShoppingBag/></button>
-        <button onClick={() => setView('requests')} className={`p-4 rounded-full transition-all ${view === 'requests' ? 'bg-red-700 text-white shadow-lg' : 'text-slate-400'}`}><ClipboardList/></button>
-        <button onClick={() => setView('post')} className={`p-4 rounded-full transition-all ${view === 'post' ? 'bg-red-700 text-white shadow-lg' : 'text-slate-400'}`}><PlusCircle/></button>
+        <button onClick={() => setView('market')} title="Browse Marketplace" className={`p-4 rounded-full transition-all ${view === 'market' ? 'bg-red-700 text-white shadow-lg' : 'text-slate-400'}`}><ShoppingBag/></button>
+        <button onClick={() => setView('requests')} title="View Requests" className={`p-4 rounded-full transition-all ${view === 'requests' ? 'bg-red-700 text-white shadow-lg' : 'text-slate-400'}`}><ClipboardList/></button>
+        <button onClick={() => setView('post')} title="Post an Item" className={`p-4 rounded-full transition-all ${view === 'post' ? 'bg-red-700 text-white shadow-lg' : 'text-slate-400'}`}><PlusCircle/></button>
       </div>
     </div>
   );
