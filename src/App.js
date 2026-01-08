@@ -42,21 +42,35 @@ function App() {
     } catch (err) { alert(err.message); }
   };
 
-  const handlePost = async () => {
-  setLoading(true); // 1. Start "Syncing..."
-  
-  try {
-    await createListing(itemData); // 2. Upload the item
+  const handlePost = async (e) => {
+    if (e) e.preventDefault(); // Prevents page reload
+    setLoading(true);
     
-    alert("🎉 Success! Item is now live."); // 3. Show a message
-    setScreen('home'); // 4. Automatically go back to Home screen
-    
-  } catch (error) {
-    alert("Oh no! Something went wrong.");
-  } finally {
-    setLoading(false); // 5. Stop the "Syncing" animation
-  }
-};
+    try {
+      const listingData = {
+        name: itemName,
+        price: price,
+        image: imageUrl || "https://via.placeholder.com/150",
+        seller: user.email,
+        type: 'Sell'
+      };
+
+      await createListing(listingData);
+      
+      alert("🎉 Success! Item is now live.");
+      
+      // Reset fields
+      setItemName(''); setPrice(''); setImageUrl('');
+      
+      // GO BACK TO HOME
+      setView('market');
+      refreshData();
+    } catch (err) {
+      alert("Post Failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleRequest = async (e) => {
     e.preventDefault();
