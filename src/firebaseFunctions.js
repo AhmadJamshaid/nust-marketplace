@@ -11,6 +11,8 @@ import {
   addDoc, 
   getDocs, 
   query, 
+  where,
+  onSnapshot,
   orderBy,
   serverTimestamp,
   doc,
@@ -51,6 +53,28 @@ export const resendVerificationLink = async () => {
     return await sendEmailVerification(auth.currentUser);
   }
   throw new Error("No active user session found. Please login again.");
+};
+
+// --- CHAT FUNCTIONS ---
+export const sendMessage = async (chatId, sender, text) => {
+  await addDoc(collection(db, 'messages'), {
+    chatId: chatId,
+    sender: sender,
+    text: text,
+    createdAt: serverTimestamp()
+  });
+};
+
+export const listenToMessages = (chatId, callback) => {
+  const q = query(
+    collection(db, 'messages'),
+    where('chatId', '==', chatId),
+    orderBy('createdAt', 'asc')
+  );
+  return onSnapshot(q, (snapshot) => {
+    const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(msgs);
+  });
 };
 
 // --- LISTING FUNCTIONS ---
