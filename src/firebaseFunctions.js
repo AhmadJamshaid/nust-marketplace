@@ -92,3 +92,16 @@ export const getRequests = async () => {
 };export const authStateListener = (callback) => {
   return onAuthStateChanged(auth, callback);
 };
+// email verfication
+import { getAuth, sendEmailVerification } from "firebase/auth";
+
+// ... existing code ...
+
+export const resendVerification = async () => {
+  const auth = getAuth();
+  if (auth.currentUser) {
+    return await sendEmailVerification(auth.currentUser);
+  } else {
+    throw new Error("No user is currently logged in.");
+  }
+};

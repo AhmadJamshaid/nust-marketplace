@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingBag, PlusCircle, LogOut, User, ClipboardList, Send, Trash2 } from 'lucide-react';
 import { 
   authStateListener, logoutUser, loginUser, signUpUser, 
-  getListings, createListing, getRequests, createRequest 
+  getListings, createListing, getRequests, createRequest,
+  resendVerificationLink // Import the fix
 } from './firebaseFunctions';
 
 function App() {
@@ -39,12 +40,8 @@ function App() {
     if (resending) return;
     setResending(true);
     try {
-      if (user) {
-        await user.sendEmailVerification();
-        alert("📩 Link Sent! Please check your Inbox AND your Spam/Junk folder.");
-      } else {
-        alert("Session expired. Please log in again to resend.");
-      }
+      await resendVerificationLink();
+      alert("📩 Link Sent! Please check your Inbox AND your Spam/Junk folder.");
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -55,22 +52,18 @@ function App() {
   const handleAuth = async (e) => {
     e.preventDefault();
     if (!isLogin && !email.toLowerCase().endsWith("@seecs.edu.pk")) {
-      alert("❌ Access Denied! Only @seecs.edu.pk emails are allowed.");
+      alert("❌ Only @seecs.edu.pk emails allowed!");
       return;
     }
-
     try {
       if (isLogin) { 
         await loginUser(email, password); 
       } else { 
         const userCredential = await signUpUser(email, password, { name: "SEECS Student" });
-        // Send verification immediately after signup
-        await userCredential.user.sendEmailVerification();
+        await resendVerificationLink();
         alert("🚀 Account created! Verify your email to enter.");
       }
-    } catch (err) { 
-      alert(err.message); 
-    }
+    } catch (err) { alert(err.message); }
   };
 
   const handlePost = async (e) => {
@@ -78,21 +71,16 @@ function App() {
     setLoading(true);
     try {
       await createListing({
-        name: itemName,
-        price: price,
+        name: itemName, price: price,
         image: imageUrl || "https://via.placeholder.com/150",
-        seller: user.email,
-        type: 'Sell'
+        seller: user.email, type: 'Sell'
       });
-      alert("🎉 Item is now live!");
+      alert("🎉 Item Posted!");
       setItemName(''); setPrice(''); setImageUrl('');
       setView('market');
       refreshData();
-    } catch (err) {
-      alert("Post Failed: " + err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { alert(err.message); }
+    finally { setLoading(false); }
   };
 
   const handleRequest = async (e) => {
@@ -107,37 +95,22 @@ function App() {
 
   const myListings = listings.filter(item => item.seller === user?.email);
 
-  // --- BLOCKED SCREEN FOR UNVERIFIED USERS ---
   if (!user || (user && !user.emailVerified)) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-8 border-red-700 text-center">
           <h1 className="text-2xl font-black text-red-700 mb-6 italic uppercase tracking-tighter">NUST Market</h1>
-          
           {user && !user.emailVerified ? (
-            <div className="space-y-6">
-              <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
-                <p className="text-slate-800 font-bold">Verify Your Email</p>
-                <p className="text-xs text-slate-500 mt-1">Sent to: <b>{user.email}</b></p>
-                <p className="text-[11px] bg-yellow-200 text-yellow-900 font-bold mt-3 p-2 rounded-lg">
-                  ⚠️ IMPORTANT: Check your SPAM or JUNK folder!
-                </p>
+            <div className="space-y-4">
+              <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 text-left">
+                <p className="text-sm font-bold text-yellow-800">Verify Your Email</p>
+                <p className="text-[11px] text-slate-500 mt-1">Sent to: {user.email}</p>
+                <p className="text-[10px] bg-yellow-200 p-2 mt-2 rounded font-bold text-yellow-900 uppercase">⚠️ Check Spam Folder!</p>
               </div>
-              
-              <button 
-                onClick={handleResendEmail} 
-                disabled={resending}
-                className="w-full bg-slate-800 text-white p-3 rounded-xl font-bold text-sm"
-              >
+              <button onClick={handleResendEmail} disabled={resending} className="w-full bg-slate-800 text-white p-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-transform">
                 {resending ? "Sending..." : "Resend Verification Email"}
               </button>
-
-              <button 
-                onClick={logoutUser} 
-                className="w-full border-2 border-slate-200 text-slate-500 p-3 rounded-xl font-bold text-sm"
-              >
-                Back to Login
-              </button>
+              <button onClick={logoutUser} className="w-full border p-3 rounded-xl font-bold text-slate-400 text-sm">Back to Login</button>
             </div>
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
@@ -209,7 +182,7 @@ function App() {
               <div className="w-16 h-16 bg-red-100 text-red-700 rounded-full flex items-center justify-center mx-auto mb-3 font-black text-xl">
                 {user.email[0].toUpperCase()}
               </div>
-              <h2 className="font-black text-slate-800 uppercase italic">My Profile</h2>
+              <h2 className="font-black text-slate-800 uppercase italic tracking-tighter">My Profile</h2>
               <p className="text-xs text-slate-500">{user.email}</p>
               <span className="inline-block mt-2 bg-green-100 text-green-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase italic">SEECS Verified</span>
             </div>
@@ -225,7 +198,7 @@ function App() {
                       <p className="text-xs text-red-700 font-bold">Rs. {item.price}</p>
                     </div>
                   </div>
-                  <button className="text-slate-300 hover:text-red-600 transition-colors p-2"><Trash2 size={18}/></button>
+                  <button className="text-slate-300 hover:text-red-600 transition-colors p-2" data-tooltip="Delete"><Trash2 size={18}/></button>
                 </div>
               ))}
             </div>
