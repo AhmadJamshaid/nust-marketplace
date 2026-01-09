@@ -41,26 +41,36 @@ function App() {
     try {
       if (user) {
         await user.sendEmailVerification();
-        alert("📩 Link Sent! Check your Inbox and Spam/Junk folder.");
+        alert("📩 Link Sent! Please check your Inbox AND your Spam/Junk folder.");
+      } else {
+        alert("Session expired. Please log in again to resend.");
       }
-    } catch (err) { alert(err.message); }
-    finally { setResending(false); }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setResending(false);
+    }
   };
 
   const handleAuth = async (e) => {
     e.preventDefault();
     if (!isLogin && !email.toLowerCase().endsWith("@seecs.edu.pk")) {
-      alert("❌ Only @seecs.edu.pk emails allowed!");
+      alert("❌ Access Denied! Only @seecs.edu.pk emails are allowed.");
       return;
     }
+
     try {
-      if (isLogin) { await loginUser(email, password); } 
-      else { 
-        const newUser = await signUpUser(email, password, { name: "SEECS Student" });
-        await newUser.user.sendEmailVerification();
-        alert("🚀 Account created! Check your email to verify.");
+      if (isLogin) { 
+        await loginUser(email, password); 
+      } else { 
+        const userCredential = await signUpUser(email, password, { name: "SEECS Student" });
+        // Send verification immediately after signup
+        await userCredential.user.sendEmailVerification();
+        alert("🚀 Account created! Verify your email to enter.");
       }
-    } catch (err) { alert(err.message); }
+    } catch (err) { 
+      alert(err.message); 
+    }
   };
 
   const handlePost = async (e) => {
@@ -68,16 +78,21 @@ function App() {
     setLoading(true);
     try {
       await createListing({
-        name: itemName, price: price,
+        name: itemName,
+        price: price,
         image: imageUrl || "https://via.placeholder.com/150",
-        seller: user.email, type: 'Sell'
+        seller: user.email,
+        type: 'Sell'
       });
-      alert("🎉 Item Posted!");
+      alert("🎉 Item is now live!");
       setItemName(''); setPrice(''); setImageUrl('');
       setView('market');
       refreshData();
-    } catch (err) { alert(err.message); }
-    finally { setLoading(false); }
+    } catch (err) {
+      alert("Post Failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRequest = async (e) => {
@@ -90,23 +105,39 @@ function App() {
     } catch (err) { alert(err.message); }
   };
 
-  // Filter listings for the Profile view
   const myListings = listings.filter(item => item.seller === user?.email);
 
+  // --- BLOCKED SCREEN FOR UNVERIFIED USERS ---
   if (!user || (user && !user.emailVerified)) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-8 border-red-700 text-center">
           <h1 className="text-2xl font-black text-red-700 mb-6 italic uppercase tracking-tighter">NUST Market</h1>
+          
           {user && !user.emailVerified ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
-                <p className="text-sm font-bold text-yellow-800">Verify Your Email</p>
-                <p className="text-xs text-slate-500 mt-1">Sent to: {user.email}</p>
-                <p className="text-[10px] bg-yellow-200 p-2 mt-2 rounded font-bold text-yellow-900">Check Spam/Junk Folder!</p>
+                <p className="text-slate-800 font-bold">Verify Your Email</p>
+                <p className="text-xs text-slate-500 mt-1">Sent to: <b>{user.email}</b></p>
+                <p className="text-[11px] bg-yellow-200 text-yellow-900 font-bold mt-3 p-2 rounded-lg">
+                  ⚠️ IMPORTANT: Check your SPAM or JUNK folder!
+                </p>
               </div>
-              <button onClick={handleResendEmail} className="w-full bg-slate-800 text-white p-3 rounded-xl font-bold text-sm">Resend Email</button>
-              <button onClick={logoutUser} className="w-full border p-3 rounded-xl font-bold text-slate-400">Back to Login</button>
+              
+              <button 
+                onClick={handleResendEmail} 
+                disabled={resending}
+                className="w-full bg-slate-800 text-white p-3 rounded-xl font-bold text-sm"
+              >
+                {resending ? "Sending..." : "Resend Verification Email"}
+              </button>
+
+              <button 
+                onClick={logoutUser} 
+                className="w-full border-2 border-slate-200 text-slate-500 p-3 rounded-xl font-bold text-sm"
+              >
+                Back to Login
+              </button>
             </div>
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
@@ -165,8 +196,8 @@ function App() {
             <h2 className="text-2xl font-black italic text-slate-800 uppercase tracking-tighter">New Listing</h2>
             <input required value={itemName} className="w-full border p-3 rounded-xl bg-slate-50" placeholder="Item Name" onChange={e => setItemName(e.target.value)} />
             <input required value={price} type="number" className="w-full border p-3 rounded-xl bg-slate-50" placeholder="Price (PKR)" onChange={e => setPrice(e.target.value)} />
-            <input required value={imageUrl} className="w-full border p-3 rounded-xl bg-slate-50" placeholder="Image URL" onChange={e => setImageUrl(e.target.value)} />
-            <button disabled={loading} type="submit" className="w-full bg-slate-900 text-white p-4 rounded-2xl font-black uppercase shadow-xl">
+            <input required value={imageUrl} className="w-full border p-3 rounded-xl bg-slate-50" placeholder="Paste Image Link" onChange={e => setImageUrl(e.target.value)} />
+            <button disabled={loading} type="submit" className="w-full bg-slate-900 text-white p-4 rounded-2xl font-black uppercase shadow-xl active:scale-95 transition-transform">
               {loading ? "Syncing..." : "Launch Listing"}
             </button>
           </form>
