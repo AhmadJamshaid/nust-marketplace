@@ -123,3 +123,25 @@ export const getRequests = async () => {
   });
   return requests;
 };
+export const getMyChats = (userEmail, callback) => {
+  // This listens for any message sent to or from you
+  const q = query(
+    collection(db, 'messages'),
+    orderBy('createdAt', 'desc')
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const allMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Group messages by chatId (Item ID)
+    const groups = allMsgs.reduce((acc, msg) => {
+      // Check if you are involved in this chat (as sender or if it's your item)
+      // For now, we filter for chats you've participated in
+      if (!acc[msg.chatId]) acc[msg.chatId] = [];
+      acc[msg.chatId].push(msg);
+      return acc;
+    }, {});
+
+    callback(groups);
+  });
+};
