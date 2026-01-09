@@ -3,7 +3,8 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  sendEmailVerification
 } from 'firebase/auth';
 import { 
   collection, 
@@ -18,6 +19,10 @@ import {
 } from 'firebase/firestore';
 
 // --- AUTH FUNCTIONS ---
+export const authStateListener = (callback) => {
+  return onAuthStateChanged(auth, callback);
+};
+
 export const signUpUser = async (email, password, userData) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
@@ -25,9 +30,9 @@ export const signUpUser = async (email, password, userData) => {
     ...userData,
     email: user.email,
     createdAt: serverTimestamp(),
-    verified: true
+    verified: false
   });
-  return { uid: user.uid, email: user.email, ...userData };
+  return userCredential;
 };
 
 export const loginUser = async (email, password) => {
@@ -41,15 +46,20 @@ export const logoutUser = async () => {
   await signOut(auth);
 };
 
-// --- LISTING FUNCTIONS (Optimized for Free Tier) ---
+export const resendVerificationLink = async () => {
+  if (auth.currentUser) {
+    return await sendEmailVerification(auth.currentUser);
+  }
+  throw new Error("No active user session found. Please login again.");
+};
+
+// --- LISTING FUNCTIONS ---
 export const createListing = async (listingData) => {
   try {
-    console.log("Firebase Function: Sending data to Firestore...");
     const docRef = await addDoc(collection(db, 'listings'), {
       ...listingData,
       createdAt: serverTimestamp()
     });
-    console.log("Firebase Function: Success! ID:", docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Firebase Function Error:", error);
@@ -67,7 +77,6 @@ export const getListings = async () => {
     });
     return listings;
   } catch (error) {
-    console.error("Error fetching listings:", error);
     return [];
   }
 };
@@ -89,19 +98,4 @@ export const getRequests = async () => {
     requests.push({ id: doc.id, ...doc.data() });
   });
   return requests;
-};export const authStateListener = (callback) => {
-  return onAuthStateChanged(auth, callback);
-};
-// email verfication
-import { getAuth, sendEmailVerification } from "firebase/auth";
-
-// ... keep all your existing code (getListings, etc.) ...
-
-// ADD THIS EXACTLY:
-export const resendVerificationLink = async () => {
-  const auth = getAuth();
-  if (auth.currentUser) {
-    return await sendEmailVerification(auth.currentUser);
-  }
-  throw new Error("No active user session found. Please login again.");
 };

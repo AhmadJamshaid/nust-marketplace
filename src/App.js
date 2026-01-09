@@ -1,15 +1,9 @@
-import { 
-  authStateListener, logoutUser, loginUser, signUpUser, 
-  getListings, createListing, getRequests, createRequest,
-  resendVerificationLink // <-- Must match the name in firebaseFunctions.js
-} from './firebaseFunctions';
-
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, PlusCircle, LogOut, User, ClipboardList, Send, Trash2 } from 'lucide-react';
 import { 
   authStateListener, logoutUser, loginUser, signUpUser, 
   getListings, createListing, getRequests, createRequest,
-  resendVerificationLink // Import the fix
+  resendVerificationLink 
 } from './firebaseFunctions';
 
 function App() {
@@ -65,7 +59,7 @@ function App() {
       if (isLogin) { 
         await loginUser(email, password); 
       } else { 
-        const userCredential = await signUpUser(email, password, { name: "SEECS Student" });
+        await signUpUser(email, password, { name: "SEECS Student" });
         await resendVerificationLink();
         alert("🚀 Account created! Verify your email to enter.");
       }
