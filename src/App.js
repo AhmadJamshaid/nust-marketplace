@@ -35,13 +35,25 @@ function App() {
   };
 
   const handleAuth = async (e) => {
-    e.preventDefault();
-    try {
-      if (isLogin) { await loginUser(email, password); } 
-      else { await signUpUser(email, password, { name: "NUST Student" }); }
-    } catch (err) { alert(err.message); }
-  };
+  e.preventDefault();
+  
+  // Logic to only allow SEECS students
+  if (!isLogin && !email.endsWith("@seecs.edu.pk")) {
+    alert("Access Denied! Only @seecs.edu.pk emails are allowed.");
+    return;
+  }
 
+  try {
+    if (isLogin) { 
+      await loginUser(email, password); 
+    } else { 
+      const newUser = await signUpUser(email, password, { name: "SEECS Student" });
+      // This sends the verification email automatically
+      await newUser.user.sendEmailVerification();
+      alert("Verification email sent! Please check your inbox before logging in.");
+    }
+  } catch (err) { alert(err.message); }
+};
   const handlePost = async (e) => {
     if (e) e.preventDefault(); // Prevents page reload
     setLoading(true);
@@ -82,17 +94,26 @@ function App() {
     } catch (err) { alert(err.message); }
   };
 
-  if (!user) {
+  // Only show the app if user exists AND their email is verified
+  if (!user || (user && !user.emailVerified)) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-8 border-red-700 text-center">
           <h1 className="text-2xl font-black text-red-700 mb-6 tracking-tighter uppercase italic">NUST Market</h1>
-          <form onSubmit={handleAuth} className="space-y-4">
-            <input className="w-full border p-3 rounded-xl outline-none" type="email" placeholder="NUST Email" onChange={e => setEmail(e.target.value)} required />
-            <input className="w-full border p-3 rounded-xl outline-none" type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} required />
-            <button className="w-full bg-red-700 text-white p-3 rounded-xl font-bold">{isLogin ? "Login" : "Sign Up"}</button>
-            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-xs text-slate-500 underline">Switch to {isLogin ? 'Sign Up' : 'Login'}</button>
-          </form>
+          
+          {user && !user.emailVerified ? (
+            <div className="space-y-4">
+              <p className="text-slate-600">Please verify your email to enter the SEECS Market.</p>
+              <button onClick={logoutUser} className="w-full bg-red-700 text-white p-3 rounded-xl font-bold">Back to Login</button>
+            </div>
+          ) : (
+            <form onSubmit={handleAuth} className="space-y-4">
+              <input className="w-full border p-3 rounded-xl outline-none" type="email" placeholder="seecs@seecs.edu.pk" onChange={e => setEmail(e.target.value)} required />
+              <input className="w-full border p-3 rounded-xl outline-none" type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} required />
+              <button className="w-full bg-red-700 text-white p-3 rounded-xl font-bold">{isLogin ? "Login" : "Sign Up"}</button>
+              <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-xs text-slate-500 underline">Switch to {isLogin ? 'Sign Up' : 'Login'}</button>
+            </form>
+          )}
         </div>
       </div>
     );
