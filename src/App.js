@@ -1,3 +1,9 @@
+import { 
+  authStateListener, logoutUser, loginUser, signUpUser, 
+  getListings, createListing, getRequests, createRequest,
+  resendVerificationLink // <-- Must match the name in firebaseFunctions.js
+} from './firebaseFunctions';
+
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, PlusCircle, LogOut, User, ClipboardList, Send, Trash2 } from 'lucide-react';
 import { 

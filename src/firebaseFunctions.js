@@ -95,13 +95,13 @@ export const getRequests = async () => {
 // email verfication
 import { getAuth, sendEmailVerification } from "firebase/auth";
 
-// ... existing code ...
+// ... keep all your existing code (getListings, etc.) ...
 
-export const resendVerification = async () => {
+// ADD THIS EXACTLY:
+export const resendVerificationLink = async () => {
   const auth = getAuth();
   if (auth.currentUser) {
     return await sendEmailVerification(auth.currentUser);
-  } else {
-    throw new Error("No user is currently logged in.");
   }
+  throw new Error("No active user session found. Please login again.");
 };
