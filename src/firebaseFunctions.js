@@ -55,6 +55,22 @@ export const resendVerificationLink = async () => {
   throw new Error("No active user session found. Please login again.");
 };
 
+// --- PRIVACY & PROFILE FUNCTIONS ---
+// This is the missing function that caused the build error!
+export const getPublicProfile = async (email) => {
+  try {
+    const q = query(collection(db, 'users'), where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      return querySnapshot.docs[0].data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    return null;
+  }
+};
+
 // --- CHAT FUNCTIONS ---
 export const sendMessage = async (chatId, sender, text) => {
   await addDoc(collection(db, 'messages'), {
@@ -77,6 +93,23 @@ export const listenToMessages = (chatId, callback) => {
   });
 };
 
+export const getMyChats = (userEmail, callback) => {
+  const q = query(
+    collection(db, 'messages'),
+    orderBy('createdAt', 'desc')
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const allMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const groups = allMsgs.reduce((acc, msg) => {
+      if (!acc[msg.chatId]) acc[msg.chatId] = [];
+      acc[msg.chatId].push(msg);
+      return acc;
+    }, {});
+    callback(groups);
+  });
+};
+
 // --- LISTING FUNCTIONS ---
 export const createListing = async (listingData) => {
   try {
@@ -86,7 +119,6 @@ export const createListing = async (listingData) => {
     });
     return docRef.id;
   } catch (error) {
-    console.error("Firebase Function Error:", error);
     throw error;
   }
 };
@@ -95,11 +127,7 @@ export const getListings = async () => {
   try {
     const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
-    const listings = [];
-    querySnapshot.forEach((doc) => {
-      listings.push({ id: doc.id, ...doc.data() });
-    });
-    return listings;
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     return [];
   }
@@ -117,31 +145,5 @@ export const createRequest = async (requestData) => {
 export const getRequests = async () => {
   const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
   const querySnapshot = await getDocs(q);
-  const requests = [];
-  querySnapshot.forEach((doc) => {
-    requests.push({ id: doc.id, ...doc.data() });
-  });
-  return requests;
-};
-export const getMyChats = (userEmail, callback) => {
-  // This listens for any message sent to or from you
-  const q = query(
-    collection(db, 'messages'),
-    orderBy('createdAt', 'desc')
-  );
-
-  return onSnapshot(q, (snapshot) => {
-    const allMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-    // Group messages by chatId (Item ID)
-    const groups = allMsgs.reduce((acc, msg) => {
-      // Check if you are involved in this chat (as sender or if it's your item)
-      // For now, we filter for chats you've participated in
-      if (!acc[msg.chatId]) acc[msg.chatId] = [];
-      acc[msg.chatId].push(msg);
-      return acc;
-    }, {});
-
-    callback(groups);
-  });
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
