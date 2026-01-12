@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* THEME: NUST ELECTRIC */
 :root {
   --nust-blue: #003366;
   --electric-blue: #3b82f6;
@@ -17,7 +16,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Scrollbar Styling */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #0f1012; }
 ::-webkit-scrollbar-thumb { 
@@ -25,11 +23,9 @@ body {
   border-radius: 10px; 
 }
 
-/* Utility: Hide Scrollbar but allow scroll */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ANIMATIONS */
 @keyframes float {
   0% { transform: translateY(0px); }
   50% { transform: translateY(-20px); }
@@ -50,7 +46,6 @@ body {
 }
 .animate-slide-up { animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
-/* GLASSMORPHISM UTILITIES */
 .glass {
   background: rgba(20, 20, 30, 0.6);
   backdrop-filter: blur(16px);
@@ -65,7 +60,6 @@ body {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
-/* GRADIENT TEXT */
 .text-gradient {
   background: linear-gradient(to right, #60a5fa, #34d399);
   -webkit-background-clip: text;

@@ -5,25 +5,21 @@ import {
 } from 'firebase/auth';
 import { 
   collection, addDoc, getDocs, query, where, onSnapshot,
-  orderBy, serverTimestamp, doc, setDoc, getDoc, updateDoc, increment
+  orderBy, serverTimestamp, doc, setDoc, updateDoc, increment
 } from 'firebase/firestore';
 
-// --- AUTHENTICATION ---
 export const authStateListener = (callback) => onAuthStateChanged(auth, callback);
 
 export const signUpUser = async (email, password, userData) => {
-  // PRD REQUIREMENT: Gatekeeping NUST Emails
   if (!email.endsWith('.edu.pk')) {
     throw new Error("Access Denied: Please use your official NUST/University email (@*.edu.pk).");
   }
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  
-  // Create User Profile in Database
   await setDoc(doc(db, 'users', userCredential.user.uid), {
     ...userData,
     email: userCredential.user.email,
     uid: userCredential.user.uid,
-    reputation: 5.0, // Start with 5 Stars (PRD Requirement)
+    reputation: 5.0,
     totalRatings: 0,
     createdAt: serverTimestamp()
   });
@@ -34,27 +30,21 @@ export const loginUser = (email, password) => signInWithEmailAndPassword(auth, e
 export const logoutUser = () => signOut(auth);
 export const resendVerificationLink = () => auth.currentUser && sendEmailVerification(auth.currentUser);
 
-// --- PROFILE & REPUTATION ---
 export const getPublicProfile = async (email) => {
   const q = query(collection(db, 'users'), where('email', '==', email));
   const snap = await getDocs(q);
   return !snap.empty ? snap.docs[0].data() : null;
 };
 
-// Rate User Logic (1-5 Stars)
 export const rateUser = async (targetUserEmail, ratingValue) => {
   const q = query(collection(db, 'users'), where('email', '==', targetUserEmail));
   const snap = await getDocs(q);
-  
   if (!snap.empty) {
     const userDoc = snap.docs[0];
     const currentData = userDoc.data();
-    
-    // Calculate new weighted average
     const currentTotal = currentData.reputation * (currentData.totalRatings || 0);
     const newCount = (currentData.totalRatings || 0) + 1;
     const newAverage = (currentTotal + ratingValue) / newCount;
-
     await updateDoc(doc(db, 'users', userDoc.id), {
       reputation: Number(newAverage.toFixed(1)),
       totalRatings: increment(1)
@@ -62,7 +52,6 @@ export const rateUser = async (targetUserEmail, ratingValue) => {
   }
 };
 
-// --- IMAGES (CLOUDINARY) ---
 export const uploadImageToCloudinary = async (file) => {
   const formData = new FormData();
   formData.append("file", file);
@@ -72,13 +61,11 @@ export const uploadImageToCloudinary = async (file) => {
     `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, 
     { method: "POST", body: formData }
   );
-  
-  if (!response.ok) throw new Error("Image upload failed. Check your Cloudinary Preset.");
+  if (!response.ok) throw new Error("Image upload failed. Check Cloudinary Config.");
   const data = await response.json();
   return data.secure_url;
 };
 
-// --- MARKETPLACE DATA ---
 export const createListing = (data) => addDoc(collection(db, 'listings'), { ...data, createdAt: serverTimestamp() });
 
 export const getListings = async () => {
@@ -95,7 +82,6 @@ export const getRequests = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// --- CHAT SYSTEM ---
 export const sendMessage = async (chatId, sender, text) => {
   await addDoc(collection(db, 'messages'), { chatId, sender, text, createdAt: serverTimestamp() });
 };
