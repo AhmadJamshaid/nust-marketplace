@@ -1,149 +1,111 @@
-import { auth, db } from './firebase'; 
+import { auth, db, CLOUDINARY_CLOUD_NAME, CLOUDINARY_PRESET } from './firebase'; 
 import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut,
-  onAuthStateChanged,
-  sendEmailVerification
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, sendEmailVerification
 } from 'firebase/auth';
 import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where,
-  onSnapshot,
-  orderBy,
-  serverTimestamp,
-  doc,
-  setDoc,
-  getDoc
+  collection, addDoc, getDocs, query, where, onSnapshot,
+  orderBy, serverTimestamp, doc, setDoc, getDoc, updateDoc, increment
 } from 'firebase/firestore';
 
-// --- AUTH FUNCTIONS ---
-export const authStateListener = (callback) => {
-  return onAuthStateChanged(auth, callback);
-};
+// --- AUTHENTICATION ---
+export const authStateListener = (callback) => onAuthStateChanged(auth, callback);
 
 export const signUpUser = async (email, password, userData) => {
+  // PRD REQUIREMENT: Gatekeeping NUST Emails
+  if (!email.endsWith('.edu.pk')) {
+    throw new Error("Access Denied: Please use your official NUST/University email (@*.edu.pk).");
+  }
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  const user = userCredential.user;
-  await setDoc(doc(db, 'users', user.uid), {
+  
+  // Create User Profile in Database
+  await setDoc(doc(db, 'users', userCredential.user.uid), {
     ...userData,
-    email: user.email,
-    createdAt: serverTimestamp(),
-    verified: false
+    email: userCredential.user.email,
+    uid: userCredential.user.uid,
+    reputation: 5.0, // Start with 5 Stars (PRD Requirement)
+    totalRatings: 0,
+    createdAt: serverTimestamp()
   });
   return userCredential;
 };
 
-export const loginUser = async (email, password) => {
-  const userCredential = await signInWithEmailAndPassword(auth, email, password);
-  const user = userCredential.user;
-  const userDoc = await getDoc(doc(db, 'users', user.uid));
-  return { uid: user.uid, email: user.email, ...userDoc.data() };
-};
+export const loginUser = (email, password) => signInWithEmailAndPassword(auth, email, password);
+export const logoutUser = () => signOut(auth);
+export const resendVerificationLink = () => auth.currentUser && sendEmailVerification(auth.currentUser);
 
-export const logoutUser = async () => {
-  await signOut(auth);
-};
-
-export const resendVerificationLink = async () => {
-  if (auth.currentUser) {
-    return await sendEmailVerification(auth.currentUser);
-  }
-  throw new Error("No active user session found. Please login again.");
-};
-
-// --- PRIVACY & PROFILE FUNCTIONS ---
-// This is the missing function that caused the build error!
+// --- PROFILE & REPUTATION ---
 export const getPublicProfile = async (email) => {
-  try {
-    const q = query(collection(db, 'users'), where('email', '==', email));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      return querySnapshot.docs[0].data();
-    }
-    return null;
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    return null;
-  }
+  const q = query(collection(db, 'users'), where('email', '==', email));
+  const snap = await getDocs(q);
+  return !snap.empty ? snap.docs[0].data() : null;
 };
 
-// --- CHAT FUNCTIONS ---
-export const sendMessage = async (chatId, sender, text) => {
-  await addDoc(collection(db, 'messages'), {
-    chatId: chatId,
-    sender: sender,
-    text: text,
-    createdAt: serverTimestamp()
-  });
-};
+// Rate User Logic (1-5 Stars)
+export const rateUser = async (targetUserEmail, ratingValue) => {
+  const q = query(collection(db, 'users'), where('email', '==', targetUserEmail));
+  const snap = await getDocs(q);
+  
+  if (!snap.empty) {
+    const userDoc = snap.docs[0];
+    const currentData = userDoc.data();
+    
+    // Calculate new weighted average
+    const currentTotal = currentData.reputation * (currentData.totalRatings || 0);
+    const newCount = (currentData.totalRatings || 0) + 1;
+    const newAverage = (currentTotal + ratingValue) / newCount;
 
-export const listenToMessages = (chatId, callback) => {
-  const q = query(
-    collection(db, 'messages'),
-    where('chatId', '==', chatId),
-    orderBy('createdAt', 'asc')
-  );
-  return onSnapshot(q, (snapshot) => {
-    const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    callback(msgs);
-  });
-};
-
-export const getMyChats = (userEmail, callback) => {
-  const q = query(
-    collection(db, 'messages'),
-    orderBy('createdAt', 'desc')
-  );
-
-  return onSnapshot(q, (snapshot) => {
-    const allMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const groups = allMsgs.reduce((acc, msg) => {
-      if (!acc[msg.chatId]) acc[msg.chatId] = [];
-      acc[msg.chatId].push(msg);
-      return acc;
-    }, {});
-    callback(groups);
-  });
-};
-
-// --- LISTING FUNCTIONS ---
-export const createListing = async (listingData) => {
-  try {
-    const docRef = await addDoc(collection(db, 'listings'), {
-      ...listingData,
-      createdAt: serverTimestamp()
+    await updateDoc(doc(db, 'users', userDoc.id), {
+      reputation: Number(newAverage.toFixed(1)),
+      totalRatings: increment(1)
     });
-    return docRef.id;
-  } catch (error) {
-    throw error;
   }
 };
+
+// --- IMAGES (CLOUDINARY) ---
+export const uploadImageToCloudinary = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_PRESET); 
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, 
+    { method: "POST", body: formData }
+  );
+  
+  if (!response.ok) throw new Error("Image upload failed. Check your Cloudinary Preset.");
+  const data = await response.json();
+  return data.secure_url;
+};
+
+// --- MARKETPLACE DATA ---
+export const createListing = (data) => addDoc(collection(db, 'listings'), { ...data, createdAt: serverTimestamp() });
 
 export const getListings = async () => {
-  try {
-    const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (error) {
-    return [];
-  }
+  const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// --- REQUEST FUNCTIONS ---
-export const createRequest = async (requestData) => {
-  const docRef = await addDoc(collection(db, 'requests'), {
-    ...requestData,
-    createdAt: serverTimestamp()
-  });
-  return docRef.id;
-};
+export const createRequest = (data) => addDoc(collection(db, 'requests'), { ...data, createdAt: serverTimestamp() });
 
 export const getRequests = async () => {
   const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+// --- CHAT SYSTEM ---
+export const sendMessage = async (chatId, sender, text) => {
+  await addDoc(collection(db, 'messages'), { chatId, sender, text, createdAt: serverTimestamp() });
+};
+
+export const listenToMessages = (chatId, callback) => {
+  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), orderBy('createdAt', 'asc'));
+  return onSnapshot(q, (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+};
+
+export const listenToAllMessages = (callback) => {
+  const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 };

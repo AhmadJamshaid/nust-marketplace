@@ -2,33 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* FAST TOOLTIPS: Black background, White text */
-[data-tooltip] {
-  position: relative;
+/* Custom Shake Animation for Errors */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
 }
 
-[data-tooltip]:before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 110%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #000000;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 6px;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.1s ease-in-out;
-  z-index: 1000;
-  pointer-events: none;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+/* Hide Scrollbar for horizontal scrolling */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
 }
-
-[data-tooltip]:hover:before {
-  opacity: 1;
-  visibility: visible;
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
