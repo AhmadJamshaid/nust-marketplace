@@ -3,7 +3,7 @@ import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send, 
   MessageCircle, X, Mail, Star, Camera, Eye, EyeOff, 
   Search, Filter, MapPin, AlertTriangle, ChevronRight, Check,
-  Zap, Clock, Truck, Tag, ShieldCheck, Phone // <--- FIXED: Added Phone
+  Zap, Clock, Truck, Tag, ShieldCheck, Phone
 } from 'lucide-react';
 import { 
   authStateListener, logoutUser, loginUser, signUpUser, 
@@ -88,11 +88,21 @@ export default function App() {
         await loginUser(email, password);
       } else {
         if (!acceptedTerms) throw new Error("Please accept the Terms of Service.");
+        // Sign up automatically logs you in
         await signUpUser(email, password, { name, whatsapp: phone });
         await resendVerificationLink();
-        alert("Verification link sent to your NUST email!");
+        alert("Account created! Verification link sent to your email.");
       }
-    } catch (err) { alert(err.message); }
+    } catch (err) { 
+      if (err.code === 'auth/invalid-credential') {
+        alert("Incorrect Email or Password. If you haven't signed up, please create an account.");
+      } else if (err.code === 'auth/email-already-in-use') {
+        alert("This email is already registered. Please Login.");
+        setIsLogin(true);
+      } else {
+        alert(err.message);
+      }
+    }
   };
 
   const handlePostItem = async (e) => {
@@ -133,8 +143,10 @@ export default function App() {
   if (!user || (user && !user.emailVerified)) {
     return (
       <div className="relative min-h-screen bg-[#050505] overflow-hidden flex items-center justify-center p-4">
+        {/* Background Effects */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
+        
         <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
           <div className="text-center mb-8">
             <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-[#003366] to-[#2563eb] shadow-lg shadow-blue-500/30 mb-4 animate-float">
@@ -149,6 +161,7 @@ export default function App() {
                   <Clock className="mx-auto text-yellow-500 mb-2 animate-pulse" />
                   <h3 className="text-yellow-100 font-bold">Verify Your Identity</h3>
                   <p className="text-xs text-yellow-500/80 mt-1">We sent a link to {user.email}</p>
+                  <p className="text-[10px] text-gray-400 mt-2">Check your spam folder if not received.</p>
                </div>
                <button onClick={() => resendVerificationLink()} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-900/50">Resend Link</button>
                <button onClick={logoutUser} className="text-sm text-gray-500 hover:text-white">Sign Out</button>
@@ -157,17 +170,27 @@ export default function App() {
             <form onSubmit={handleAuth} className="space-y-4">
                {!isLogin && (
                  <div className="grid grid-cols-2 gap-3">
-                   <input className="input-sparky" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
-                   <input className="input-sparky" placeholder="0300..." value={phone} onChange={e => setPhone(e.target.value)} required />
+                   {/* Explicit Background Colors for Inputs */}
+                   <input className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
+                   <input className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500" placeholder="0300..." value={phone} onChange={e => setPhone(e.target.value)} required />
                  </div>
                )}
-               <input className="input-sparky w-full" type="email" placeholder="std@nust.edu.pk" value={email} onChange={e => setEmail(e.target.value)} required />
+               <input className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500" type="email" placeholder="std@nust.edu.pk" value={email} onChange={e => setEmail(e.target.value)} required />
+               
                <div className="relative">
-                 <input type={showPassword ? "text" : "password"} className="input-sparky w-full pr-10" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
+                 <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500 pr-10" 
+                    placeholder="Password" 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    required 
+                 />
                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                  </button>
                </div>
+
                {!isLogin && (
                  <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
                    <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} className="rounded border-gray-600 bg-transparent" />
@@ -264,7 +287,7 @@ export default function App() {
                     <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`}>I'M GOING TO MARKET</button>
                  </div>
                  <div className="flex gap-2">
-                   <input value={reqText} onChange={e => setReqText(e.target.value)} className="input-sparky flex-1" placeholder={isMarketRun ? "e.g. Going to Saddar at 5pm..." : "e.g. I need an Arduino..."} />
+                   <input value={reqText} onChange={e => setReqText(e.target.value)} className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500 flex-1" placeholder={isMarketRun ? "e.g. Going to Saddar at 5pm..." : "e.g. I need an Arduino..."} />
                    <button className="p-3 bg-white text-black rounded-xl hover:scale-105 transition-transform"><Send size={20}/></button>
                  </div>
                </form>
@@ -297,12 +320,12 @@ export default function App() {
                  </div>
                  <button type="button" onClick={() => setIsUrgent(!isUrgent)} className={`px-4 rounded-xl border border-white/5 flex flex-col items-center justify-center transition-all ${isUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500'}`}><Zap size={16} fill={isUrgent ? "currentColor" : "none"}/><span className="text-[10px] font-bold">URGENT</span></button>
               </div>
-              <input value={itemName} onChange={e => setItemName(e.target.value)} className="input-sparky w-full" placeholder="Title (e.g. Lab Coat)" />
+              <input value={itemName} onChange={e => setItemName(e.target.value)} className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500" placeholder="Title (e.g. Lab Coat)" />
               <div className="flex gap-3">
-                <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className="input-sparky flex-1" placeholder="Price" />
-                <select value={condition} onChange={e => setCondition(e.target.value)} className="input-sparky flex-1 bg-[#15161a]"><option>New</option><option>Like New</option><option>Used</option><option>For Parts</option></select>
+                <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500 flex-1" placeholder="Price" />
+                <select value={condition} onChange={e => setCondition(e.target.value)} className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500 flex-1"><option>New</option><option>Like New</option><option>Used</option><option>For Parts</option></select>
               </div>
-              <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className="input-sparky w-full h-32 resize-none" placeholder="Description..." />
+              <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500 h-32 resize-none" placeholder="Description..." />
               <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all">{isUploading ? "Uploading..." : "Publish to Market"}</button>
             </form>
           </div>
@@ -348,7 +371,7 @@ export default function App() {
                    </div>
                  ))}
               </div>
-              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className="input-sparky flex-1" placeholder="Type..." /><button className="p-3 bg-blue-600 rounded-xl"><Send size={18}/></button></form>
+              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className="w-full bg-[#15161a] border border-gray-700 text-white px-4 py-3 rounded-xl outline-none focus:border-blue-500 flex-1" placeholder="Type..." /><button className="p-3 bg-blue-600 rounded-xl"><Send size={18}/></button></form>
            </div>
         </div>
       )}
@@ -360,11 +383,6 @@ export default function App() {
         <NavBtn icon={ClipboardList} active={view === 'requests'} onClick={() => setView('requests')} />
         <NavBtn icon={User} active={view === 'profile'} onClick={() => setView('profile')} />
       </div>
-
-      <style>{`
-        .input-sparky { width: 100%; background: #15161a; border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px 16px; border-radius: 12px; outline: none; transition: all 0.2s; }
-        .input-sparky:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-      `}</style>
     </div>
   );
 }
