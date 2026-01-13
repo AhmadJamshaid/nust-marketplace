@@ -17,14 +17,12 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [userProfileData, setUserProfileData] = useState(null); 
   const [view, setView] = useState('market'); 
-  
-  // Data States
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
   
-  // Loading States (Race Condition Fixes)
-  const [isFeedLoading, setIsFeedLoading] = useState(true); // Specific for feed
-  const [isAuthChecking, setIsAuthChecking] = useState(true); // Specific for auth
+  // --- ISSUE 1 FIX: LOADING STATES ---
+  const [isFeedLoading, setIsFeedLoading] = useState(true); // Dedicated Feed Loader
+  const [isAuthLoading, setIsAuthLoading] = useState(true); // Dedicated Auth Loader
   
   // Advanced Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,9 +51,9 @@ export default function App() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false); 
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
+  const [authFormLoading, setAuthFormLoading] = useState(false);
   
-  // Profile Edit
+  // Profile Edit Inputs
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -85,20 +83,10 @@ export default function App() {
 
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
-  // --- INITIALIZATION ---
+  // --- 1. INITIALIZATION & RACE CONDITION FIX ---
   useEffect(() => {
-    // 1. Auth Listener
-    const unsubscribe = authStateListener(async (u) => {
-      setUser(u);
-      if (u) {
-        const profile = await getPublicProfile(u.email);
-        setUserProfileData(profile);
-      }
-      setIsAuthChecking(false);
-    });
-
-    // 2. Data Fetcher (Race Condition Fix: Run immediately on mount)
-    const initData = async () => {
+    // A. Immediate Feed Fetch (Don't wait for Auth to show public items)
+    const fetchFeed = async () => {
       setIsFeedLoading(true);
       try {
         const [items, reqs] = await Promise.all([getListings(), getRequests()]);
@@ -110,21 +98,31 @@ export default function App() {
         setIsFeedLoading(false);
       }
     };
-    initData();
+    fetchFeed();
+
+    // B. Auth Listener
+    const unsubscribe = authStateListener(async (u) => {
+      setUser(u);
+      setIsAuthLoading(false);
+      if (u) {
+        const profile = await getPublicProfile(u.email);
+        setUserProfileData(profile);
+      }
+    });
 
     return () => unsubscribe();
   }, []);
 
-  // --- CHAT REAL-TIME LISTENER ---
+  // --- 2. REAL-TIME CHAT SOCKET FIX ---
   useEffect(() => {
     if (activeChat) {
-      // This is the persistent connection. It fires whenever DB changes.
+      // This establishes the WebSocket connection via Firestore
       const unsubscribe = listenToMessages(activeChat.id, (msgs) => {
         setChatMessages(msgs);
-        // Optimistic UI: Scroll to bottom immediately
+        // Optimistic UI: Auto-scroll to bottom on new message
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       });
-      return () => unsubscribe();
+      return () => unsubscribe(); // Cleanup listener on unmount/change
     }
   }, [activeChat]);
 
@@ -144,6 +142,15 @@ export default function App() {
       return () => unsubscribe();
     }
   }, [user, listings]);
+
+  const refreshData = async () => {
+    // Fallback refresh if needed manually
+    setIsFeedLoading(true);
+    const [items, reqs] = await Promise.all([getListings(), getRequests()]);
+    setListings(items); 
+    setRequests(reqs);
+    setIsFeedLoading(false);
+  };
 
   // --- FILTER LOGIC ---
   const filteredListings = useMemo(() => {
@@ -165,10 +172,9 @@ export default function App() {
     });
   }, [listings, searchQuery, activeCondition, activeType, activeCategory]);
 
-  // --- HANDLERS ---
   const handleAuth = async (e) => {
     e.preventDefault();
-    setAuthLoading(true);
+    setAuthFormLoading(true);
     try {
       if (isLogin) {
         await loginWithUsername(username, password);
@@ -181,7 +187,7 @@ export default function App() {
         alert("Account Created! Check your email.");
       }
     } catch (err) { alert(err.message); } 
-    finally { setAuthLoading(false); }
+    finally { setAuthFormLoading(false); }
   };
 
   const handlePostItem = async (e) => {
@@ -196,9 +202,7 @@ export default function App() {
         image: imageUrl, seller: user.email, sellerName: user.displayName || "NUST Student", 
         sellerDept: department, sellerReputation: 5.0 
       });
-      // Re-fetch to update feed immediately
-      const items = await getListings();
-      setListings(items);
+      refreshData();
       setView('market'); 
       setItemName(''); setItemPrice(''); setImageFile(null); setItemDesc('');
     } catch (err) { alert(err.message); } 
@@ -210,8 +214,7 @@ export default function App() {
     try {
       if (decision === 'SOLD') { await markListingSold(deleteModalItem); } 
       else if (decision === 'DELETE') { await deleteListing(deleteModalItem); }
-      const items = await getListings(); // Refresh list
-      setListings(items);
+      refreshData();
       setDeleteModalItem(null); 
     } catch (err) { alert(err.message); }
   };
@@ -225,9 +228,8 @@ export default function App() {
         title: reqTitle, text: reqDesc, user: user.email, 
         userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent 
       });
-      const reqs = await getRequests(); // Refresh list
-      setRequests(reqs);
       setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
+      await refreshData();
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); } 
   };
@@ -235,8 +237,47 @@ export default function App() {
   const handleDeleteRequest = async (id) => {
     if (window.confirm("Remove this post from the board?")) {
       await deleteRequest(id);
-      const reqs = await getRequests();
-      setRequests(reqs);
+      refreshData();
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    try {
+      let newPhotoURL = user.photoURL;
+      if (editPic) newPhotoURL = await uploadImageToCloudinary(editPic);
+      const updatedData = {
+        username: editName || user.displayName,
+        whatsapp: editPhone || userProfileData.whatsapp,
+        department: editDept || userProfileData.department,
+        photoURL: newPhotoURL
+      };
+      await updateUserProfile(user.uid, updatedData, editPassword);
+      setIsEditingProfile(false);
+      alert("Profile Updated!");
+      window.location.reload();
+    } catch (err) { alert("Update failed: " + err.message); }
+  };
+
+  const openEditProfile = () => {
+    setEditName(user.displayName);
+    setEditPhone(userProfileData?.whatsapp || '');
+    setEditDept(userProfileData?.department || 'SEECS');
+    setIsEditingProfile(true);
+  };
+
+  const handleDeleteChat = async (chatId) => {
+    if (window.confirm("Delete this conversation?")) {
+      await deleteChat(chatId);
+      setInboxGroups(prev => { const n={...prev}; delete n[chatId]; return n; });
+    }
+  };
+
+  const handleRequestClick = (req) => {
+    if (req.user !== user.email) {
+      setActiveChat({ 
+        id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user 
+      });
     }
   };
 
@@ -246,45 +287,39 @@ export default function App() {
     setIsSendingMsg(true); 
     try {
       await sendMessage(activeChat.id, user.email, newMsg);
-      // WhatsApp Sync (Optimized): Only notify if it's the very first message
-      if (chatMessages.length === 0) {
-        await sendMessage(activeChat.id, "System", "🔔 Notification sent to WhatsApp!");
-        const sellerProfile = await getPublicProfile(activeChat.seller);
-        if (sellerProfile?.whatsapp) {
-           const text = `Hi! Interested in '${activeChat.name}' on Samaan Share.`;
-           window.open(`https://wa.me/${sellerProfile.whatsapp}?text=${encodeURIComponent(text)}`, '_blank');
-        }
-      }
+      // WhatsApp Sync handled in background by firebaseFunctions logic if connected
       setNewMsg('');
     } catch (err) { alert(err.message); }
     finally { setIsSendingMsg(false); } 
   };
 
-  const formatTime = (timestamp) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate();
+  // --- TIMESTAMP FORMATTER ---
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'Sending...';
+    // Firestore Timestamp to Date
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // --- LOADING SKELETON ---
+  // --- SKELETON LOADER (Prevent Layout Shift) ---
   const LoadingSkeleton = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-pulse">
       {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-[#202225] rounded-2xl p-4 animate-pulse border border-white/5">
-          <div className="h-40 bg-white/10 rounded-xl mb-4"></div>
-          <div className="h-4 bg-white/10 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-white/10 rounded w-1/2"></div>
+        <div key={i} className="bg-[#202225] rounded-2xl p-4 border border-white/5 h-64">
+          <div className="h-40 bg-white/5 rounded-xl mb-4"></div>
+          <div className="h-4 bg-white/5 rounded w-3/4 mb-2"></div>
+          <div className="h-4 bg-white/5 rounded w-1/2"></div>
         </div>
       ))}
     </div>
   );
 
-  if (isAuthChecking) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
+  if (isAuthLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   if (!user || (user && !user.emailVerified)) {
     return (
       <div className="relative min-h-screen bg-[#050505] overflow-hidden flex items-center justify-center p-4">
-        {/* ... (Auth UI remains unchanged) ... */}
+        {/* Auth UI */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
         <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
@@ -348,8 +383,8 @@ export default function App() {
                    <span>I agree to the <span className="text-blue-400">Terms</span> & <span className="text-blue-400">Privacy</span></span>
                  </label>
                )}
-               <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
-                 {authLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
+               <button disabled={authFormLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
+                 {authFormLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
                </button>
                <div className="text-center pt-2">
                  <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-gray-400 hover:text-white transition-colors">
@@ -443,6 +478,7 @@ export default function App() {
                     <div className="relative h-48">
                       <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                      {/* Fixed Titles: Always visible */}
                       <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end z-10">
                         <div className="w-2/3">
                           <h3 className="font-bold text-white text-lg shadow-black drop-shadow-md leading-tight mb-1" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
@@ -479,6 +515,7 @@ export default function App() {
           </div>
         )}
         
+        {/* POST, REQUESTS, INBOX, PROFILE... */}
         {view === 'post' && (
           <div className="glass-card p-6 rounded-3xl animate-slide-up border-t border-white/20 bg-gradient-to-br from-[#1a1c22] to-[#0f1012] shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-[80px] pointer-events-none"></div>
@@ -529,7 +566,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ... Requests, Inbox, Profile remain the same ... */}
         {view === 'requests' && (
           <div className="animate-slide-up space-y-6">
             <div className="glass-card p-5 rounded-2xl border-l-4 border-l-yellow-500">
@@ -691,8 +727,23 @@ export default function App() {
         </div>
       )}
 
-      {/* ... (Delete Modal remains the same) ... */}
-      
+      {deleteModalItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+           <div className="bg-[#1a1c22] w-full max-w-sm rounded-3xl p-6 border border-white/10 shadow-2xl animate-slide-up">
+              <div className="text-center mb-6">
+                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="text-red-500" size={32}/></div>
+                 <h3 className="text-xl font-bold text-white">Manage Listing</h3>
+                 <p className="text-gray-400 text-sm mt-1">What would you like to do?</p>
+              </div>
+              <div className="space-y-3">
+                 <button onClick={() => handleDeleteDecision('SOLD')} className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold flex items-center justify-center gap-2" title="Keep item but show as sold"><CheckCircle size={18}/> Mark as Sold</button>
+                 <button onClick={() => handleDeleteDecision('DELETE')} className="w-full py-3.5 rounded-xl bg-[#252830] hover:bg-red-500/20 hover:text-red-400 text-gray-400 font-bold border border-white/5" title="Remove completely">Permanently Delete</button>
+                 <button onClick={() => setDeleteModalItem(null)} className="w-full py-3 text-sm text-gray-500">Cancel</button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#15161a]/80 backdrop-blur-xl border border-white/10 p-1.5 rounded-full flex gap-1 shadow-2xl z-40">
         <NavBtn icon={ShoppingBag} active={view === 'market'} onClick={() => setView('market')} title="Marketplace" />
         <NavBtn icon={Mail} active={view === 'inbox'} onClick={() => setView('inbox')} title="Inbox" hasUnread={hasUnread} />

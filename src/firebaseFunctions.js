@@ -62,9 +62,10 @@ export const getPublicProfile = async (email) => {
   return !snap.empty ? snap.docs[0].data() : null;
 };
 
-// --- MARKETPLACE (FEED) ---
+// --- MARKETPLACE & FEED (PERSISTENT LISTENER OPTION) ---
+// Note: We use getDocs for the feed to save reads, but if you want real-time feed, switch to onSnapshot here.
+// For now, we fix the "Race Condition" by calling this immediately after auth in App.js
 export const getListings = async () => {
-  // Fetch latest 50 items. This is a one-time fetch, but called immediately on app load.
   const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'), limit(50));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -94,38 +95,33 @@ export const getRequests = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// --- REAL-TIME CHAT LISTENERS ---
+// --- REAL-TIME CHAT ARCHITECTURE (SOCKET LOGIC) ---
 
 export const sendMessage = async (chatId, sender, text) => {
+  // This triggers the onSnapshot listener immediately for optimistic UI
   await addDoc(collection(db, 'messages'), { 
     chatId, 
     sender, 
     text, 
-    createdAt: serverTimestamp() // Critical for ordering
+    createdAt: serverTimestamp() // Server assigns time, local listener handles latency
   });
 };
 
-/**
- * SOCKET LOGIC: Listens to a specific chat room in real-time.
- * Returns: Unsubscribe function (to close connection when chat closes)
- */
+// THE FIX: Returns the Unsubscribe function for useEffect cleanup
 export const listenToMessages = (chatId, callback) => {
   const q = query(
     collection(db, 'messages'), 
     where('chatId', '==', chatId), 
-    orderBy('createdAt', 'asc') // Ensure chronological order
+    orderBy('createdAt', 'asc') // Chronological order
   );
   
-  // onSnapshot is the WebSocket wrapper
+  // onSnapshot opens the WebSocket connection
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(messages);
   });
 };
 
-/**
- * GLOBAL INBOX LISTENER: Listens to ALL messages to build the inbox list.
- */
 export const listenToAllMessages = (callback) => {
   const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
