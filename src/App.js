@@ -3,31 +3,35 @@ import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send, 
   MessageCircle, X, Mail, Star, Camera, Eye, EyeOff, 
   Search, Filter, MapPin, AlertTriangle, ChevronRight, Check,
-  Zap, Clock, Truck, Tag, ShieldCheck, Phone, Trash2, Flag, CheckCircle, AlertCircle
+  Zap, Clock, Truck, Tag, ShieldCheck, Phone, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle
 } from 'lucide-react';
 import { 
   authStateListener, logoutUser, loginWithUsername, signUpUser, 
-  getListings, createListing, getRequests, createRequest,
+  getListings, createListing, getRequests, createRequest, deleteRequest,
   resendVerificationLink, sendMessage, listenToMessages, 
-  listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser, deleteListing, markListingSold, reportListing
+  listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser, 
+  deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat
 } from './firebaseFunctions';
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [userProfileData, setUserProfileData] = useState(null); 
   const [view, setView] = useState('market'); 
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Search & Filter
+  // Search & Filter (Updated for Combination)
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [activeCondition, setActiveCondition] = useState('All'); // 'All', 'New', 'Used'
+  const [activeType, setActiveType] = useState('All');           // 'All', 'SELL', 'RENT'
 
   // Chat
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [inboxGroups, setInboxGroups] = useState({});
   const [newMsg, setNewMsg] = useState('');
+  const [isSendingMsg, setIsSendingMsg] = useState(false); 
   const messagesEndRef = useRef(null);
   
   // Auth Inputs
@@ -36,11 +40,20 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [department, setDepartment] = useState('SEECS');
+  const [name, setName] = useState('');
   const [profilePic, setProfilePic] = useState(null);
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false); 
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  
+  // Profile Edit Inputs
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editDept, setEditDept] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editPic, setEditPic] = useState(null);
   
   // Listing Inputs
   const [itemName, setItemName] = useState('');
@@ -49,27 +62,33 @@ export default function App() {
   const [listingType, setListingType] = useState('SELL');
   const [condition, setCondition] = useState('Used'); 
   const [category, setCategory] = useState('Electronics');
-  const [isUrgent, setIsUrgent] = useState(false);   
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   
   // Request Input
-  const [reqText, setReqText] = useState('');
+  const [reqTitle, setReqTitle] = useState(''); 
+  const [reqDesc, setReqDesc] = useState('');   
   const [isMarketRun, setIsMarketRun] = useState(false); 
+  const [isRequestUrgent, setIsRequestUrgent] = useState(false);
+  const [isPostingReq, setIsPostingReq] = useState(false); 
 
-  // Delete/Action Modal
+  // Modals
   const [deleteModalItem, setDeleteModalItem] = useState(null);
 
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
-  // --- INITIAL LOAD ---
   useEffect(() => {
-    const unsubscribe = authStateListener((u) => setUser(u));
+    const unsubscribe = authStateListener(async (u) => {
+      setUser(u);
+      if (u) {
+        const profile = await getPublicProfile(u.email);
+        setUserProfileData(profile);
+      }
+    });
     refreshData();
     return () => unsubscribe();
   }, []);
 
-  // --- AUTO SCROLL CHAT ---
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
@@ -77,7 +96,8 @@ export default function App() {
   useEffect(() => {
     if (user) {
       const unsubscribe = listenToAllMessages((msgs) => {
-        const groups = msgs.reduce((acc, m) => {
+        const myMsgs = msgs.filter(m => m.sender === user.email || listings.find(l => l.id === m.chatId)?.seller === user.email);
+        const groups = myMsgs.reduce((acc, m) => {
           if (!acc[m.chatId]) acc[m.chatId] = [];
           acc[m.chatId].push(m);
           return acc;
@@ -86,7 +106,7 @@ export default function App() {
       });
       return () => unsubscribe();
     }
-  }, [user]);
+  }, [user, listings]);
 
   useEffect(() => {
     if (activeChat) {
@@ -102,21 +122,29 @@ export default function App() {
       setListings(items); 
       setRequests(reqs);
     } catch (e) {
-      console.error("Connection slow or failed", e);
+      console.error("Connection slow", e);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --- UPDATED FILTER LOGIC ---
   const filteredListings = useMemo(() => {
     return listings.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [listings, searchQuery, activeCategory]);
+      
+      let matchesCondition = true;
+      if (activeCondition === 'New') matchesCondition = item.condition === 'New';
+      if (activeCondition === 'Used') matchesCondition = item.condition !== 'New'; // Covers 'Used', 'Like New', 'For Parts'
 
-  // --- HANDLERS ---
+      let matchesType = true;
+      if (activeType === 'SELL') matchesType = item.type === 'SELL';
+      if (activeType === 'RENT') matchesType = item.type === 'RENT';
+
+      return matchesSearch && matchesCondition && matchesType;
+    });
+  }, [listings, searchQuery, activeCondition, activeType]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -125,104 +153,134 @@ export default function App() {
         await loginWithUsername(username, password);
       } else {
         if (!acceptedTerms) throw new Error("Please accept the Terms of Service.");
-        
         let photoURL = `https://api.dicebear.com/7.x/initials/svg?seed=${username}&backgroundColor=003366`;
-        if (profilePic) {
-           photoURL = await uploadImageToCloudinary(profilePic);
-        }
-
-        await signUpUser(email, password, { username, whatsapp: phone, department, photoURL });
+        if (profilePic) photoURL = await uploadImageToCloudinary(profilePic);
+        await signUpUser(email, password, { username, name, whatsapp: phone, department, photoURL });
         await resendVerificationLink();
-        alert("Account created! Verification link sent to " + email);
+        alert("Account Created! Check your email.");
       }
-    } catch (err) { 
-      alert(err.message);
-    } finally {
-      setAuthLoading(false);
-    }
+    } catch (err) { alert(err.message); } 
+    finally { setAuthLoading(false); }
   };
 
   const handlePostItem = async (e) => {
     e.preventDefault();
     setIsUploading(true);
     try {
-      let imageUrl = "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=800&q=80"; 
+      let imageUrl = "https://via.placeholder.com/400?text=No+Image"; 
       if (imageFile) imageUrl = await uploadImageToCloudinary(imageFile);
-
       await createListing({ 
-        name: itemName, 
-        price: Number(itemPrice), 
-        description: itemDesc,
-        type: listingType, 
-        condition: condition,
-        category: category,
-        isUrgent: isUrgent,
-        image: imageUrl, 
-        seller: user.email, 
-        sellerName: user.displayName || "NUST Student", 
-        sellerDept: department,
-        sellerReputation: 5.0 
+        name: itemName, price: Number(itemPrice), description: itemDesc,
+        type: listingType, condition: condition, category: category,
+        image: imageUrl, seller: user.email, sellerName: user.displayName || "NUST Student", 
+        sellerDept: department, sellerReputation: 5.0 
       });
-      
       setView('market'); refreshData();
-      setItemName(''); setItemPrice(''); setImageFile(null); setItemDesc(''); setIsUrgent(false);
-    } catch (err) { alert("Error: " + err.message); } 
+      setItemName(''); setItemPrice(''); setImageFile(null); setItemDesc('');
+    } catch (err) { alert(err.message); } 
     finally { setIsUploading(false); }
   };
 
-  // --- DELETE WIZARD ---
   const handleDeleteDecision = async (decision) => {
     if (!deleteModalItem) return;
     try {
-      if (decision === 'SOLD') {
-        await markListingSold(deleteModalItem);
-      } else if (decision === 'DELETE') {
-        await deleteListing(deleteModalItem);
-      }
+      if (decision === 'SOLD') { await markListingSold(deleteModalItem); } 
+      else if (decision === 'DELETE') { await deleteListing(deleteModalItem); }
       refreshData();
-      setDeleteModalItem(null); // Close Modal
-    } catch (err) {
-      alert(err.message);
+      setDeleteModalItem(null); 
+    } catch (err) { alert(err.message); }
+  };
+
+  const handlePostRequest = async (e) => {
+    e.preventDefault();
+    if (!reqTitle.trim() || isPostingReq) return;
+    setIsPostingReq(true); 
+    try {
+      await createRequest({ 
+        title: reqTitle, text: reqDesc, user: user.email, 
+        userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent 
+      });
+      setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
+      await refreshData();
+    } catch (err) { alert(err.message); }
+    finally { setIsPostingReq(false); } 
+  };
+
+  const handleDeleteRequest = async (id) => {
+    if (window.confirm("Remove this post from the board?")) {
+      await deleteRequest(id);
+      refreshData();
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    try {
+      let newPhotoURL = user.photoURL;
+      if (editPic) newPhotoURL = await uploadImageToCloudinary(editPic);
+      const updatedData = {
+        username: editName || user.displayName,
+        whatsapp: editPhone || userProfileData.whatsapp,
+        department: editDept || userProfileData.department,
+        photoURL: newPhotoURL
+      };
+      await updateUserProfile(user.uid, updatedData, editPassword);
+      setIsEditingProfile(false);
+      alert("Profile Updated!");
+      window.location.reload();
+    } catch (err) { alert("Update failed: " + err.message); }
+  };
+
+  const openEditProfile = () => {
+    setEditName(user.displayName);
+    setEditPhone(userProfileData?.whatsapp || '');
+    setEditDept(userProfileData?.department || 'SEECS');
+    setIsEditingProfile(true);
+  };
+
+  const handleDeleteChat = async (chatId) => {
+    if (window.confirm("Delete this conversation?")) {
+      await deleteChat(chatId);
+      setInboxGroups(prev => { const n={...prev}; delete n[chatId]; return n; });
+    }
+  };
+
+  const handleRequestClick = (req) => {
+    if (req.user !== user.email) {
+      setActiveChat({ 
+        id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user 
+      });
     }
   };
 
   const handleSendChat = async (e) => {
     e.preventDefault();
-    if (!newMsg.trim()) return;
+    if (!newMsg.trim() || isSendingMsg) return;
+    setIsSendingMsg(true); 
     try {
       await sendMessage(activeChat.id, user.email, newMsg);
-      if (chatMessages.length === 0) {
-        await sendMessage(activeChat.id, "System", "🔔 Seller notified!");
-        const sellerProfile = await getPublicProfile(activeChat.seller);
-        if (sellerProfile?.whatsapp) {
-           const text = `Hi! Interested in '${activeChat.name}' on Samaan Share.`;
-           window.open(`https://wa.me/${sellerProfile.whatsapp}?text=${encodeURIComponent(text)}`, '_blank');
-        }
-      }
       setNewMsg('');
     } catch (err) { alert(err.message); }
+    finally { setIsSendingMsg(false); } 
   };
 
-  // --- COMPONENTS ---
   const LoadingSkeleton = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {[1, 2, 3, 4].map(i => (
         <div key={i} className="bg-[#202225] rounded-2xl p-4 animate-pulse border border-white/5">
-          <div className="h-40 bg-white/5 rounded-xl mb-4"></div>
-          <div className="h-4 bg-white/5 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-white/5 rounded w-1/2"></div>
+          <div className="h-40 bg-white/10 rounded-xl mb-4"></div>
+          <div className="h-4 bg-white/10 rounded w-3/4 mb-2"></div>
         </div>
       ))}
     </div>
   );
 
-  // --- MAIN RENDER ---
   if (!user || (user && !user.emailVerified)) {
     return (
       <div className="relative min-h-screen bg-[#050505] overflow-hidden flex items-center justify-center p-4">
+        {/* ... (Auth UI remains identical to previous version, ensuring Username first, then Password, then Details) ... */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
-        
         <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
           <div className="text-center mb-8">
             <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-[#003366] to-[#2563eb] shadow-lg shadow-blue-500/30 mb-4 animate-float">
@@ -231,12 +289,11 @@ export default function App() {
             <h1 className="text-4xl font-bold text-white tracking-tight mb-1">Samaan Share</h1>
             <p className="text-blue-300/80 text-sm">The NUST Exclusive Marketplace</p>
           </div>
-
           {user ? (
             <div className="space-y-4 text-center">
                <div className="p-4 bg-yellow-900/20 border border-yellow-500/20 rounded-xl">
                   <Clock className="mx-auto text-yellow-500 mb-2 animate-pulse" />
-                  <h3 className="text-yellow-100 font-bold">Verify Your Identity</h3>
+                  <h3 className="text-yellow-100 font-bold">Verification Pending</h3>
                   <p className="text-xs text-yellow-500/80 mt-1">We sent a link to {user.email}</p>
                </div>
                <button onClick={() => resendVerificationLink()} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">Resend Link</button>
@@ -253,32 +310,38 @@ export default function App() {
                       </div>
                    </div>
                    <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
+                   <div className="relative">
+                     <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Create Password" value={password} onChange={e => setPassword(e.target.value)} required />
+                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                     </button>
+                   </div>
+                   <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10}/> Use a new password, NOT your NUST email password.</p>
+                   <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
                    <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required />
                    <select className={inputClass} value={department} onChange={e => setDepartment(e.target.value)}>
-                      <option>SEECS</option><option>SMME</option><option>NBS</option><option>S3H</option><option>SADA</option><option>SCME</option>
+                      <option value="SEECS">SEECS</option><option value="SMME">SMME</option><option value="NBS">NBS</option><option value="S3H">S3H</option><option value="SADA">SADA</option><option value="SCME">SCME</option>
                    </select>
                    <input className={inputClass} type="email" placeholder="NUST Email (std@nust.edu.pk)" value={email} onChange={e => setEmail(e.target.value)} required />
                  </>
                )}
-
-               {isLogin && <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required />}
-               
-               <div className="relative">
-                 <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
-                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
-                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                 </button>
-               </div>
-
-               {!isLogin && <p className="text-[10px] text-gray-400 text-center flex items-center justify-center gap-1"><ShieldCheck size={12}/> Use a NEW password. Not your email password.</p>}
-
+               {isLogin && (
+                 <>
+                   <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required />
+                   <div className="relative">
+                     <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
+                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                     </button>
+                   </div>
+                 </>
+               )}
                {!isLogin && (
-                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer mt-2">
                    <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} className="rounded border-gray-600 bg-transparent" />
                    <span>I agree to the <span className="text-blue-400">Terms</span> & <span className="text-blue-400">Privacy</span></span>
                  </label>
                )}
-
                <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
                  {authLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
                </button>
@@ -305,7 +368,7 @@ export default function App() {
             </div>
             <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">SAMAAN SHARE</span>
           </div>
-          <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400">
+          <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">
             <LogOut size={20}/>
           </button>
         </div>
@@ -319,12 +382,23 @@ export default function App() {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
                 <input type="text" placeholder="Search listings..." className={`${inputClass} pl-11`} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {['All', 'Electronics', 'Books', 'Lab Gear', 'Hostel'].map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeCategory === cat ? 'bg-white text-black border-white' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`}>
-                    {cat}
-                  </button>
-                ))}
+              <div className="flex flex-col gap-2">
+                {/* Condition Filters */}
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  {['All', 'New', 'Used'].map(cat => (
+                    <button key={cat} onClick={() => setActiveCondition(cat)} className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeCondition === cat ? 'bg-white text-black border-white' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`} title="Filter by Condition">
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                {/* Type Filters */}
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  {['All', 'Buy', 'Rent'].map(type => (
+                    <button key={type} onClick={() => setActiveType(type === 'Buy' ? 'SELL' : type === 'Rent' ? 'RENT' : 'All')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeType === (type === 'Buy' ? 'SELL' : type === 'Rent' ? 'RENT' : 'All') ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`} title="Filter by Type">
+                      {type}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             {isLoading ? <LoadingSkeleton /> : (
@@ -352,11 +426,11 @@ export default function App() {
                     <div className="p-3">
                       <div className="flex justify-between items-center mb-2">
                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md">{item.category}</span>
-                         <button onClick={() => {if(window.confirm('Report this item?')) reportListing(item.id, 'User Report')}} className="text-gray-600 hover:text-red-500" title="Report"><Flag size={12}/></button>
+                         <button onClick={() => {if(window.confirm('Report this item?')) reportListing(item.id, 'User Report')}} className="text-gray-600 hover:text-red-500" title="Report Item"><Flag size={12}/></button>
                       </div>
                       <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
                       {item.seller !== user.email && item.status !== 'SOLD' && (
-                        <button onClick={() => setActiveChat(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2">
+                        <button onClick={() => setActiveChat(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
                           <MessageCircle size={16}/> Chat Now
                         </button>
                       )}
@@ -369,37 +443,58 @@ export default function App() {
           </div>
         )}
         
+        {/* ... Community Board, Post, Inbox, Profile remain identical to previous ... */}
+        {/* (Only Profile now has the Edit Profile UI inserted from previous snippet) */}
+        
         {view === 'requests' && (
           <div className="animate-slide-up space-y-6">
             <div className="glass-card p-5 rounded-2xl border-l-4 border-l-yellow-500">
                <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2"><ClipboardList className="text-yellow-500"/> Community Board</h2>
-               <form onSubmit={async (e) => { e.preventDefault(); if(!reqText.trim()) return; await createRequest({ text: reqText, user: user.email, userName: user.displayName, isMarketRun }); setReqText(''); refreshData(); }} className="space-y-3">
+               <form onSubmit={handlePostRequest} className="space-y-3">
                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setIsMarketRun(false)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${!isMarketRun ? 'bg-yellow-500 text-black' : 'bg-[#15161a] text-gray-500'}`}>I NEED ITEM</button>
-                    <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`}>I'M GOING TO MARKET</button>
+                    <button type="button" onClick={() => setIsMarketRun(false)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${!isMarketRun ? 'bg-yellow-500 text-black' : 'bg-[#15161a] text-gray-500'}`} title="Ask for something">I NEED ITEM</button>
+                    <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`} title="Offer a run">I'M GOING TO MARKET</button>
                  </div>
-                 <div className="flex gap-2">
-                   <input value={reqText} onChange={e => setReqText(e.target.value)} className={`${inputClass} flex-1`} placeholder={isMarketRun ? "e.g. Going to Saddar at 5pm..." : "e.g. I need an Arduino..."} />
-                   <button className="p-3 bg-white text-black rounded-xl hover:scale-105 transition-transform"><Send size={20}/></button>
+                 <div className="flex justify-end">
+                    <button type="button" onClick={() => setIsRequestUrgent(!isRequestUrgent)} className={`px-4 py-1.5 rounded-lg border flex items-center gap-1 transition-all ${isRequestUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500 border-white/5'}`} title="Mark as Urgent">
+                      <Zap size={14} fill={isRequestUrgent ? "currentColor" : "none"}/>
+                      <span className="text-[10px] font-bold">URGENT</span>
+                    </button>
+                 </div>
+                 <div className="space-y-3">
+                   <input value={reqTitle} onChange={e => setReqTitle(e.target.value)} className={inputClass} placeholder={isMarketRun ? "Which Market? (e.g. Saddar)" : "Item Name (e.g. Arduino)"} />
+                   <div className="flex gap-2">
+                     <input value={reqText} onChange={e => setReqText(e.target.value)} className={`${inputClass} flex-1`} placeholder={isMarketRun ? "Timing/Details (e.g. Going at 5pm)" : "Description (e.g. Need for 2 days)"} />
+                     <button disabled={isPostingReq} className="p-3 bg-white text-black rounded-xl hover:scale-105 transition-transform disabled:opacity-50" title="Post Request"><Send size={20}/></button>
+                   </div>
                  </div>
                </form>
             </div>
-            <div className="space-y-3">
-              {requests.map(req => (
-                <div key={req.id} className={`p-4 rounded-xl border flex items-start gap-4 ${req.isMarketRun ? 'bg-green-900/10 border-green-500/30' : 'bg-[#1a1c22] border-white/5'}`}>
-                  <div className={`p-3 rounded-full ${req.isMarketRun ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>{req.isMarketRun ? <Truck size={20}/> : <AlertTriangle size={20}/>}</div>
-                  <div>
-                    <h4 className="font-bold text-white">{req.isMarketRun ? "Market Run Alert" : "Request"}</h4>
-                    <p className="text-gray-300 text-sm mt-1">{req.text}</p>
-                    <p className="text-xs text-gray-500 mt-2">Posted by {req.userName} • Just now</p>
+            {isLoading ? <LoadingSkeleton/> : (
+              <div className="space-y-3">
+                {requests.map(req => (
+                  <div key={req.id} onClick={() => handleRequestClick(req)} className={`p-4 rounded-xl border flex items-start justify-between gap-4 cursor-pointer hover:bg-white/5 transition-colors ${req.isMarketRun ? 'bg-green-900/10 border-green-500/30' : 'bg-[#1a1c22] border-white/5'}`} title="Click to Chat">
+                    <div className="flex items-start gap-4">
+                      <div className={`p-3 rounded-full ${req.isMarketRun ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>{req.isMarketRun ? <Truck size={20}/> : <AlertTriangle size={20}/>}</div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-white">{req.title}</h4>
+                          {req.isUrgent && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Zap size={10} fill="white"/> URGENT</span>}
+                        </div>
+                        <p className="text-gray-300 text-sm mt-1">{req.text}</p>
+                        <p className="text-xs text-gray-500 mt-2">Posted by {req.userName} • Just now</p>
+                      </div>
+                    </div>
+                    {req.user === user.email && (
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 p-2" title="Delete Request"><Trash2 size={16}/></button>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* POST, INBOX, PROFILE (Unchanged logic, just keeping UI consistency) */}
         {view === 'post' && (
           <div className="glass-card p-6 rounded-3xl animate-slide-up">
             <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Plus className="text-blue-500"/> List Item</h2>
@@ -412,7 +507,6 @@ export default function App() {
                  <div className="flex-1 bg-[#15161a] p-1 rounded-xl flex">
                    {['SELL', 'RENT'].map(t => <button type="button" key={t} onClick={() => setListingType(t)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${listingType === t ? 'bg-[#252830] text-white shadow' : 'text-gray-500'}`}>{t}</button>)}
                  </div>
-                 <button type="button" onClick={() => setIsUrgent(!isUrgent)} className={`px-4 rounded-xl border border-white/5 flex flex-col items-center justify-center transition-all ${isUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500'}`}><Zap size={16} fill={isUrgent ? "currentColor" : "none"}/><span className="text-[10px] font-bold">URGENT</span></button>
               </div>
               <input value={itemName} onChange={e => setItemName(e.target.value)} className={inputClass} placeholder="Title (e.g. Lab Coat)" />
               <div className="flex gap-3">
@@ -429,13 +523,17 @@ export default function App() {
         {view === 'inbox' && (
           <div className="space-y-4 animate-slide-up">
             <h2 className="text-xl font-bold">Messages</h2>
-            {Object.keys(inboxGroups).map(id => (
-              <div key={id} onClick={() => setActiveChat(listings.find(l=>l.id===id) || {id, name:"Item"})} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5">
+            {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
+              Object.keys(inboxGroups).map(id => (
+              <div key={id} onClick={() => setActiveChat(listings.find(l=>l.id===id) || {id, name:"Item"})} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
                  <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400"><Mail size={20}/></div>
                  <div className="flex-1">
                    <h4 className="font-bold text-white">{listings.find(l=>l.id===id)?.name || "Chat"}</h4>
                    <p className="text-sm text-gray-400 truncate">{inboxGroups[id][inboxGroups[id].length-1].text}</p>
                  </div>
+                 <button onClick={(e) => {e.stopPropagation(); handleDeleteChat(id)}} className="absolute right-4 top-4 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Conversation">
+                   <XCircle size={18}/>
+                 </button>
               </div>
             ))}
           </div>
@@ -444,29 +542,57 @@ export default function App() {
         {view === 'profile' && (
           <div className="glass-card p-8 rounded-3xl text-center animate-slide-up relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-blue-600/20 to-transparent"/>
-             <div className="relative z-10">
-               <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center border-4 border-[#1a1c22] shadow-xl mb-4 overflow-hidden">
-                 {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover"/> : <span className="text-3xl font-bold">{user.email[0].toUpperCase()}</span>}
+             
+             {isEditingProfile ? (
+               <div className="relative z-10 space-y-4">
+                 <h3 className="text-xl font-bold text-white mb-4">Edit Profile</h3>
+                 <div className="flex justify-center mb-2">
+                    <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
+                       <input type="file" onChange={e => setEditPic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+                       {editPic ? <img src={URL.createObjectURL(editPic)} className="w-full h-full object-cover" /> : <Camera className="text-gray-500 group-hover:text-white" />}
+                    </div>
+                 </div>
+                 <input className={inputClass} placeholder="Username" value={editName} onChange={e => setEditName(e.target.value)} />
+                 <input className={inputClass} placeholder="WhatsApp" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
+                 <input className={inputClass} placeholder="New Password (Optional)" value={editPassword} onChange={e => setEditPassword(e.target.value)} type="password" />
+                 <input className={inputClass} value={user.email} disabled title="Email cannot be changed" style={{opacity: 0.5, cursor: 'not-allowed'}} />
+                 
+                 <div className="flex gap-2 pt-2">
+                   <button onClick={handleUpdateProfile} className="flex-1 py-3 bg-green-600 rounded-xl font-bold flex items-center justify-center gap-2"><Save size={18}/> Save</button>
+                   <button onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 rounded-xl font-bold">Cancel</button>
+                 </div>
                </div>
-               <h2 className="text-2xl font-bold">{user.displayName}</h2>
-               <p className="text-gray-400 text-sm mb-4">{user.email}</p>
-               <div className="flex justify-center gap-1 mb-6">{[1,2,3,4,5].map(i => <Star key={i} size={16} fill="#fbbf24" className="text-yellow-400"/>)}</div>
-               
-               <div className="text-left space-y-3">
-                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">My Listings</h3>
-                 {listings.filter(l => l.seller === user.email).map(item => (
-                   <div key={item.id} className="bg-[#15161a] p-3 rounded-xl border border-white/5 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                         <img src={item.image} className="w-10 h-10 rounded-lg object-cover" />
-                         <div><span className="font-bold text-sm block">{item.name}</span><span className={`text-[10px] px-1.5 py-0.5 rounded ${item.status === 'SOLD' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>{item.status}</span></div>
-                      </div>
-                      <div className="flex gap-2">
-                         <button onClick={() => setDeleteModalItem(item.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 size={16}/></button>
-                      </div>
-                   </div>
-                 ))}
+             ) : (
+               <div className="relative z-10">
+                 <div className="absolute top-0 right-0">
+                   <button onClick={openEditProfile} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors" title="Edit Profile">
+                     <Edit2 size={16}/>
+                   </button>
+                 </div>
+                 <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center border-4 border-[#1a1c22] shadow-xl mb-4 overflow-hidden">
+                   {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover"/> : <span className="text-3xl font-bold">{user.email[0].toUpperCase()}</span>}
+                 </div>
+                 <h2 className="text-2xl font-bold">{user.displayName}</h2>
+                 <p className="text-gray-400 text-sm mb-4">{user.email}</p>
+                 <div className="flex justify-center gap-1 mb-6">{[1,2,3,4,5].map(i => <Star key={i} size={16} fill="#fbbf24" className="text-yellow-400"/>)}</div>
+                 
+                 <div className="text-left space-y-3">
+                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">My Listings</h3>
+                   {listings.filter(l => l.seller === user.email).map(item => (
+                     <div key={item.id} className="bg-[#15161a] p-3 rounded-xl border border-white/5 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                           <img src={item.image} className="w-10 h-10 rounded-lg object-cover" />
+                           <div><span className="font-bold text-sm block">{item.name}</span><span className={`text-[10px] px-1.5 py-0.5 rounded ${item.status === 'SOLD' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>{item.status}</span></div>
+                        </div>
+                        <div className="flex gap-2">
+                           {item.status !== 'SOLD' && <button onClick={() => setDeleteModalItem(item.id)} className="p-2 text-gray-500 hover:text-green-500 hover:bg-green-500/10 rounded-full transition-colors" title="Mark Sold"><CheckCircle size={16}/></button>}
+                           <button onClick={() => setDeleteModalItem(item.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors" title="Delete Listing"><Trash2 size={16}/></button>
+                        </div>
+                     </div>
+                   ))}
+                 </div>
                </div>
-             </div>
+             )}
           </div>
         )}
       </div>
@@ -476,7 +602,7 @@ export default function App() {
            <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
               <div className="p-4 bg-[#15161a] flex justify-between items-center border-b border-white/5">
                  <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{activeChat.name[0]}</div><h3 className="font-bold text-sm">{activeChat.name}</h3></div>
-                 <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full"><X size={18}/></button>
+                 <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18}/></button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
                  {chatMessages.map(m => (
@@ -486,23 +612,22 @@ export default function App() {
                  ))}
                  <div ref={messagesEndRef} />
               </div>
-              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type..." /><button className="p-3 bg-blue-600 rounded-xl"><Send size={18}/></button></form>
+              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type..." /><button disabled={isSendingMsg} className="p-3 bg-blue-600 rounded-xl disabled:opacity-50"><Send size={18}/></button></form>
            </div>
         </div>
       )}
 
-      {/* DELETE MODAL (The Wizard) */}
       {deleteModalItem && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
            <div className="bg-[#1a1c22] w-full max-w-sm rounded-3xl p-6 border border-white/10 shadow-2xl animate-slide-up">
               <div className="text-center mb-6">
                  <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="text-red-500" size={32}/></div>
-                 <h3 className="text-xl font-bold text-white">Remove Listing?</h3>
-                 <p className="text-gray-400 text-sm mt-1">Why are you removing this item?</p>
+                 <h3 className="text-xl font-bold text-white">Manage Listing</h3>
+                 <p className="text-gray-400 text-sm mt-1">What would you like to do?</p>
               </div>
               <div className="space-y-3">
-                 <button onClick={() => handleDeleteDecision('SOLD')} className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold flex items-center justify-center gap-2"><CheckCircle size={18}/> Mark as Sold (Keep Reputation)</button>
-                 <button onClick={() => handleDeleteDecision('DELETE')} className="w-full py-3.5 rounded-xl bg-[#252830] hover:bg-red-500/20 hover:text-red-400 text-gray-400 font-bold border border-white/5">Item Damaged / Just Delete</button>
+                 <button onClick={() => handleDeleteDecision('SOLD')} className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold flex items-center justify-center gap-2" title="Keep item but show as sold"><CheckCircle size={18}/> Mark as Sold</button>
+                 <button onClick={() => handleDeleteDecision('DELETE')} className="w-full py-3.5 rounded-xl bg-[#252830] hover:bg-red-500/20 hover:text-red-400 text-gray-400 font-bold border border-white/5" title="Remove completely">Permanently Delete</button>
                  <button onClick={() => setDeleteModalItem(null)} className="w-full py-3 text-sm text-gray-500">Cancel</button>
               </div>
            </div>
@@ -510,18 +635,18 @@ export default function App() {
       )}
 
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#15161a]/80 backdrop-blur-xl border border-white/10 p-1.5 rounded-full flex gap-1 shadow-2xl z-40">
-        <NavBtn icon={ShoppingBag} active={view === 'market'} onClick={() => setView('market')} />
-        <NavBtn icon={Mail} active={view === 'inbox'} onClick={() => setView('inbox')} />
-        <NavBtn icon={Plus} active={view === 'post'} onClick={() => setView('post')} />
-        <NavBtn icon={ClipboardList} active={view === 'requests'} onClick={() => setView('requests')} />
-        <NavBtn icon={User} active={view === 'profile'} onClick={() => setView('profile')} />
+        <NavBtn icon={ShoppingBag} active={view === 'market'} onClick={() => setView('market')} title="Marketplace" />
+        <NavBtn icon={Mail} active={view === 'inbox'} onClick={() => setView('inbox')} title="Inbox" />
+        <NavBtn icon={Plus} active={view === 'post'} onClick={() => setView('post')} title="Sell Item" />
+        <NavBtn icon={ClipboardList} active={view === 'requests'} onClick={() => setView('requests')} title="Community Board" />
+        <NavBtn icon={User} active={view === 'profile'} onClick={() => setView('profile')} title="My Profile" />
       </div>
     </div>
   );
 }
 
-const NavBtn = ({ icon: Icon, active, onClick }) => (
-  <button onClick={onClick} className={`p-3.5 rounded-full transition-all duration-300 ${active ? 'bg-gradient-to-tr from-[#003366] to-[#3b82f6] text-white shadow-lg -translate-y-2 scale-110' : 'text-gray-500 hover:text-white hover:bg-white/10'}`}>
+const NavBtn = ({ icon: Icon, active, onClick, title }) => (
+  <button onClick={onClick} title={title} className={`p-3.5 rounded-full transition-all duration-300 ${active ? 'bg-gradient-to-tr from-[#003366] to-[#3b82f6] text-white shadow-lg -translate-y-2 scale-110' : 'text-gray-500 hover:text-white hover:bg-white/10'}`}>
     <Icon size={20} />
   </button>
 );
