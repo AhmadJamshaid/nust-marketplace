@@ -20,11 +20,12 @@ export default function App() {
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
   
-  // --- ISSUE 1 FIX: LOADING STATES ---
-  const [isFeedLoading, setIsFeedLoading] = useState(true); // Dedicated Feed Loader
-  const [isAuthLoading, setIsAuthLoading] = useState(true); // Dedicated Auth Loader
+  // --- LOADING STATES (Fixes "isLoading is not defined") ---
+  const [isLoading, setIsLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   
-  // Advanced Filters
+  // --- ADVANCED FILTERS ---
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false); 
   const [activeCondition, setActiveCondition] = useState('All'); 
@@ -51,7 +52,6 @@ export default function App() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false); 
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [authFormLoading, setAuthFormLoading] = useState(false);
   
   // Profile Edit Inputs
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -71,7 +71,7 @@ export default function App() {
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   
-  // Request Input
+  // Request Input (Community Board)
   const [reqTitle, setReqTitle] = useState(''); 
   const [reqDesc, setReqDesc] = useState('');   
   const [isMarketRun, setIsMarketRun] = useState(false); 
@@ -83,11 +83,20 @@ export default function App() {
 
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
-  // --- 1. INITIALIZATION & RACE CONDITION FIX ---
+  // --- INITIALIZATION ---
   useEffect(() => {
-    // A. Immediate Feed Fetch (Don't wait for Auth to show public items)
-    const fetchFeed = async () => {
-      setIsFeedLoading(true);
+    const unsubscribe = authStateListener(async (u) => {
+      setUser(u);
+      if (u) {
+        const profile = await getPublicProfile(u.email);
+        setUserProfileData(profile);
+      }
+      setIsAuthChecking(false);
+    });
+
+    // Immediate Data Fetch
+    const initData = async () => {
+      setIsLoading(true);
       try {
         const [items, reqs] = await Promise.all([getListings(), getRequests()]);
         setListings(items); 
@@ -95,34 +104,22 @@ export default function App() {
       } catch (e) {
         console.error("Feed error:", e);
       } finally {
-        setIsFeedLoading(false);
+        setIsLoading(false);
       }
     };
-    fetchFeed();
-
-    // B. Auth Listener
-    const unsubscribe = authStateListener(async (u) => {
-      setUser(u);
-      setIsAuthLoading(false);
-      if (u) {
-        const profile = await getPublicProfile(u.email);
-        setUserProfileData(profile);
-      }
-    });
+    initData();
 
     return () => unsubscribe();
   }, []);
 
-  // --- 2. REAL-TIME CHAT SOCKET FIX ---
+  // --- CHAT REAL-TIME LISTENER ---
   useEffect(() => {
     if (activeChat) {
-      // This establishes the WebSocket connection via Firestore
       const unsubscribe = listenToMessages(activeChat.id, (msgs) => {
         setChatMessages(msgs);
-        // Optimistic UI: Auto-scroll to bottom on new message
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       });
-      return () => unsubscribe(); // Cleanup listener on unmount/change
+      return () => unsubscribe();
     }
   }, [activeChat]);
 
@@ -144,15 +141,16 @@ export default function App() {
   }, [user, listings]);
 
   const refreshData = async () => {
-    // Fallback refresh if needed manually
-    setIsFeedLoading(true);
-    const [items, reqs] = await Promise.all([getListings(), getRequests()]);
-    setListings(items); 
-    setRequests(reqs);
-    setIsFeedLoading(false);
+    setIsLoading(true);
+    try {
+      const [items, reqs] = await Promise.all([getListings(), getRequests()]);
+      setListings(items); 
+      setRequests(reqs);
+    } catch (e) { console.error(e); } 
+    finally { setIsLoading(false); }
   };
 
-  // --- FILTER LOGIC ---
+  // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
     return listings.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -174,7 +172,7 @@ export default function App() {
 
   const handleAuth = async (e) => {
     e.preventDefault();
-    setAuthFormLoading(true);
+    setAuthLoading(true);
     try {
       if (isLogin) {
         await loginWithUsername(username, password);
@@ -187,7 +185,7 @@ export default function App() {
         alert("Account Created! Check your email.");
       }
     } catch (err) { alert(err.message); } 
-    finally { setAuthFormLoading(false); }
+    finally { setAuthLoading(false); }
   };
 
   const handlePostItem = async (e) => {
@@ -202,7 +200,8 @@ export default function App() {
         image: imageUrl, seller: user.email, sellerName: user.displayName || "NUST Student", 
         sellerDept: department, sellerReputation: 5.0 
       });
-      refreshData();
+      const items = await getListings();
+      setListings(items);
       setView('market'); 
       setItemName(''); setItemPrice(''); setImageFile(null); setItemDesc('');
     } catch (err) { alert(err.message); } 
@@ -214,7 +213,8 @@ export default function App() {
     try {
       if (decision === 'SOLD') { await markListingSold(deleteModalItem); } 
       else if (decision === 'DELETE') { await deleteListing(deleteModalItem); }
-      refreshData();
+      const items = await getListings();
+      setListings(items);
       setDeleteModalItem(null); 
     } catch (err) { alert(err.message); }
   };
@@ -228,16 +228,19 @@ export default function App() {
         title: reqTitle, text: reqDesc, user: user.email, 
         userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent 
       });
+      const reqs = await getRequests();
+      setRequests(reqs);
       setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
-      await refreshData();
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); } 
   };
 
+  // --- MISSING FUNCTIONS RESTORED ---
   const handleDeleteRequest = async (id) => {
     if (window.confirm("Remove this post from the board?")) {
       await deleteRequest(id);
-      refreshData();
+      const reqs = await getRequests();
+      setRequests(reqs);
     }
   };
 
@@ -287,34 +290,31 @@ export default function App() {
     setIsSendingMsg(true); 
     try {
       await sendMessage(activeChat.id, user.email, newMsg);
-      // WhatsApp Sync handled in background by firebaseFunctions logic if connected
+      // Notification sound logic or external API call could go here
       setNewMsg('');
     } catch (err) { alert(err.message); }
     finally { setIsSendingMsg(false); } 
   };
 
-  // --- TIMESTAMP FORMATTER ---
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'Sending...';
-    // Firestore Timestamp to Date
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // --- SKELETON LOADER (Prevent Layout Shift) ---
   const LoadingSkeleton = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-pulse">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {[1, 2, 3, 4].map(i => (
-        <div key={i} className="bg-[#202225] rounded-2xl p-4 border border-white/5 h-64">
-          <div className="h-40 bg-white/5 rounded-xl mb-4"></div>
-          <div className="h-4 bg-white/5 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-white/5 rounded w-1/2"></div>
+        <div key={i} className="bg-[#202225] rounded-2xl p-4 animate-pulse border border-white/5">
+          <div className="h-40 bg-white/10 rounded-xl mb-4"></div>
+          <div className="h-4 bg-white/10 rounded w-3/4 mb-2"></div>
+          <div className="h-4 bg-white/10 rounded w-1/2"></div>
         </div>
       ))}
     </div>
   );
 
-  if (isAuthLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
+  if (isAuthChecking) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   if (!user || (user && !user.emailVerified)) {
     return (
@@ -383,8 +383,8 @@ export default function App() {
                    <span>I agree to the <span className="text-blue-400">Terms</span> & <span className="text-blue-400">Privacy</span></span>
                  </label>
                )}
-               <button disabled={authFormLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
-                 {authFormLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
+               <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
+                 {authLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
                </button>
                <div className="text-center pt-2">
                  <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-gray-400 hover:text-white transition-colors">
@@ -466,7 +466,7 @@ export default function App() {
               </div>
             )}
 
-            {isFeedLoading ? <LoadingSkeleton /> : (
+            {isLoading ? <LoadingSkeleton /> : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {filteredListings.map(item => (
                   <div key={item.id} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300 relative">
@@ -478,13 +478,13 @@ export default function App() {
                     <div className="relative h-48">
                       <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                      {/* Fixed Titles: Always visible */}
+                      {/* FIXED TITLES */}
                       <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end z-10">
                         <div className="w-2/3">
                           <h3 className="font-bold text-white text-lg shadow-black drop-shadow-md leading-tight mb-1" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
                             {item.name}
                           </h3>
-                          <p className="text-xs text-gray-200 flex items-center gap-1 shadow-black drop-shadow-md">
+                          <p className="text-xs text-gray-200 flex items-center gap-1 shadow-black drop-shadow-md font-semibold">
                             <User size={12}/> {item.sellerName}
                           </p>
                         </div>
@@ -511,22 +511,25 @@ export default function App() {
                 ))}
               </div>
             )}
-            {!isFeedLoading && filteredListings.length === 0 && <div className="text-center py-20 opacity-50"><Search size={48} className="mx-auto mb-2 text-gray-600"/><p>No listings found</p></div>}
+            {!isLoading && filteredListings.length === 0 && <div className="text-center py-20 opacity-50"><Search size={48} className="mx-auto mb-2 text-gray-600"/><p>No listings found</p></div>}
           </div>
         )}
         
-        {/* POST, REQUESTS, INBOX, PROFILE... */}
         {view === 'post' && (
           <div className="glass-card p-6 rounded-3xl animate-slide-up border-t border-white/20 bg-gradient-to-br from-[#1a1c22] to-[#0f1012] shadow-2xl relative overflow-hidden">
+            {/* Sparky Background */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-[80px] pointer-events-none"></div>
             
             <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400 mb-6 flex items-center gap-2 relative z-10"><Plus className="text-blue-500"/> List Item</h2>
             <form onSubmit={handlePostItem} className="space-y-5 relative z-10">
+              
+              {/* Image Upload */}
               <div className="relative w-full h-48 rounded-2xl border-2 border-dashed border-white/10 hover:border-blue-500/50 bg-[#15161a] flex flex-col items-center justify-center cursor-pointer transition-colors group overflow-hidden shadow-inner">
                 <input type="file" onChange={e => setImageFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
                 {imageFile ? <img src={URL.createObjectURL(imageFile)} className="w-full h-full object-cover" /> : <div className="text-center group-hover:scale-105 transition-transform"><Camera size={32} className="text-gray-500 mx-auto mb-2"/><p className="text-xs text-gray-400">Tap to upload photo</p></div>}
               </div>
 
+              {/* Colorful Toggles */}
               <div className="grid grid-cols-2 gap-4">
                  <div className="flex bg-[#15161a] p-1 rounded-xl border border-white/5">
                    {['SELL', 'RENT'].map(t => (
@@ -559,6 +562,7 @@ export default function App() {
               
               <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className={`${inputClass} h-32 resize-none`} placeholder="Description..." />
               
+              {/* Restored Gradient Button */}
               <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-green-500 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-wait">
                 {isUploading ? "Uploading..." : "Publish to Market"}
               </button>
