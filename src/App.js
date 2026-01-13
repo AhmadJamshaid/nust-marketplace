@@ -1,23 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send, 
   MessageCircle, X, Mail, Star, Camera, Eye, EyeOff, 
   Search, Filter, MapPin, AlertTriangle, ChevronRight, Check,
-  Zap, Clock, Truck, Tag, ShieldCheck, Phone
+  Zap, Clock, Truck, Tag, ShieldCheck, Phone, Trash2, Flag, CheckCircle, AlertCircle
 } from 'lucide-react';
 import { 
-  authStateListener, logoutUser, loginUser, signUpUser, 
+  authStateListener, logoutUser, loginWithUsername, signUpUser, 
   getListings, createListing, getRequests, createRequest,
   resendVerificationLink, sendMessage, listenToMessages, 
-  listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser
+  listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser, deleteListing, markListingSold, reportListing
 } from './firebaseFunctions';
 
 export default function App() {
-  // --- STATE ---
   const [user, setUser] = useState(null);
   const [view, setView] = useState('market'); 
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,22 +28,27 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [inboxGroups, setInboxGroups] = useState({});
   const [newMsg, setNewMsg] = useState('');
+  const messagesEndRef = useRef(null);
   
   // Auth Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
+  const [department, setDepartment] = useState('SEECS');
+  const [profilePic, setProfilePic] = useState(null);
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false); 
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   
-  // Create Listing Inputs
+  // Listing Inputs
   const [itemName, setItemName] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [itemDesc, setItemDesc] = useState('');
   const [listingType, setListingType] = useState('SELL');
   const [condition, setCondition] = useState('Used'); 
+  const [category, setCategory] = useState('Electronics');
   const [isUrgent, setIsUrgent] = useState(false);   
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -52,7 +57,9 @@ export default function App() {
   const [reqText, setReqText] = useState('');
   const [isMarketRun, setIsMarketRun] = useState(false); 
 
-  // --- STYLE CONSTANT FOR INPUTS (Curvy, Dark, Spacious) ---
+  // Delete/Action Modal
+  const [deleteModalItem, setDeleteModalItem] = useState(null);
+
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
   // --- INITIAL LOAD ---
@@ -62,7 +69,11 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Listeners
+  // --- AUTO SCROLL CHAT ---
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
   useEffect(() => {
     if (user) {
       const unsubscribe = listenToAllMessages((msgs) => {
@@ -85,15 +96,22 @@ export default function App() {
   }, [activeChat]);
 
   const refreshData = async () => {
-    const [items, reqs] = await Promise.all([getListings(), getRequests()]);
-    setListings(items); 
-    setRequests(reqs);
+    setIsLoading(true);
+    try {
+      const [items, reqs] = await Promise.all([getListings(), getRequests()]);
+      setListings(items); 
+      setRequests(reqs);
+    } catch (e) {
+      console.error("Connection slow or failed", e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredListings = useMemo(() => {
     return listings.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = activeCategory === 'All' || item.type === activeCategory;
+      const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
       return matchesSearch && matchesCategory;
     });
   }, [listings, searchQuery, activeCategory]);
@@ -101,24 +119,26 @@ export default function App() {
   // --- HANDLERS ---
   const handleAuth = async (e) => {
     e.preventDefault();
+    setAuthLoading(true);
     try {
       if (isLogin) {
-        await loginUser(email, password);
+        await loginWithUsername(username, password);
       } else {
         if (!acceptedTerms) throw new Error("Please accept the Terms of Service.");
-        await signUpUser(email, password, { name, whatsapp: phone });
+        
+        let photoURL = `https://api.dicebear.com/7.x/initials/svg?seed=${username}&backgroundColor=003366`;
+        if (profilePic) {
+           photoURL = await uploadImageToCloudinary(profilePic);
+        }
+
+        await signUpUser(email, password, { username, whatsapp: phone, department, photoURL });
         await resendVerificationLink();
-        alert("Verification link sent to your NUST email!");
+        alert("Account created! Verification link sent to " + email);
       }
     } catch (err) { 
-      if (err.code === 'auth/invalid-credential') {
-        alert("Incorrect Email or Password. Please try again.");
-      } else if (err.code === 'auth/email-already-in-use') {
-        alert("This email is already registered. Switching you to Login...");
-        setIsLogin(true);
-      } else {
-        alert(err.message);
-      }
+      alert(err.message);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -135,10 +155,12 @@ export default function App() {
         description: itemDesc,
         type: listingType, 
         condition: condition,
+        category: category,
         isUrgent: isUrgent,
         image: imageUrl, 
         seller: user.email, 
         sellerName: user.displayName || "NUST Student", 
+        sellerDept: department,
         sellerReputation: 5.0 
       });
       
@@ -148,13 +170,29 @@ export default function App() {
     finally { setIsUploading(false); }
   };
 
+  // --- DELETE WIZARD ---
+  const handleDeleteDecision = async (decision) => {
+    if (!deleteModalItem) return;
+    try {
+      if (decision === 'SOLD') {
+        await markListingSold(deleteModalItem);
+      } else if (decision === 'DELETE') {
+        await deleteListing(deleteModalItem);
+      }
+      refreshData();
+      setDeleteModalItem(null); // Close Modal
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const handleSendChat = async (e) => {
     e.preventDefault();
     if (!newMsg.trim()) return;
     try {
       await sendMessage(activeChat.id, user.email, newMsg);
       if (chatMessages.length === 0) {
-        await sendMessage(activeChat.id, "System", "🔔 Notification sent to WhatsApp!");
+        await sendMessage(activeChat.id, "System", "🔔 Seller notified!");
         const sellerProfile = await getPublicProfile(activeChat.seller);
         if (sellerProfile?.whatsapp) {
            const text = `Hi! Interested in '${activeChat.name}' on Samaan Share.`;
@@ -165,11 +203,23 @@ export default function App() {
     } catch (err) { alert(err.message); }
   };
 
-  // --- AUTH SCREEN ---
+  // --- COMPONENTS ---
+  const LoadingSkeleton = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-[#202225] rounded-2xl p-4 animate-pulse border border-white/5">
+          <div className="h-40 bg-white/5 rounded-xl mb-4"></div>
+          <div className="h-4 bg-white/5 rounded w-3/4 mb-2"></div>
+          <div className="h-4 bg-white/5 rounded w-1/2"></div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // --- MAIN RENDER ---
   if (!user || (user && !user.emailVerified)) {
     return (
       <div className="relative min-h-screen bg-[#050505] overflow-hidden flex items-center justify-center p-4">
-        {/* Animated Background */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
         
@@ -189,32 +239,38 @@ export default function App() {
                   <h3 className="text-yellow-100 font-bold">Verify Your Identity</h3>
                   <p className="text-xs text-yellow-500/80 mt-1">We sent a link to {user.email}</p>
                </div>
-               <button onClick={() => resendVerificationLink()} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-900/50">Resend Link</button>
+               <button onClick={() => resendVerificationLink()} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">Resend Link</button>
                <button onClick={logoutUser} className="text-sm text-gray-500 hover:text-white">Sign Out</button>
             </div>
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
                {!isLogin && (
-                 <div className="grid grid-cols-2 gap-3">
-                   <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
-                   <input className={inputClass} placeholder="0300..." value={phone} onChange={e => setPhone(e.target.value)} required />
-                 </div>
+                 <>
+                   <div className="flex justify-center mb-2">
+                      <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
+                         <input type="file" onChange={e => setProfilePic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+                         {profilePic ? <img src={URL.createObjectURL(profilePic)} className="w-full h-full object-cover" /> : <Camera className="text-gray-500 group-hover:text-white" />}
+                      </div>
+                   </div>
+                   <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
+                   <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required />
+                   <select className={inputClass} value={department} onChange={e => setDepartment(e.target.value)}>
+                      <option>SEECS</option><option>SMME</option><option>NBS</option><option>S3H</option><option>SADA</option><option>SCME</option>
+                   </select>
+                   <input className={inputClass} type="email" placeholder="NUST Email (std@nust.edu.pk)" value={email} onChange={e => setEmail(e.target.value)} required />
+                 </>
                )}
-               <input className={inputClass} type="email" placeholder="std@nust.edu.pk" value={email} onChange={e => setEmail(e.target.value)} required />
+
+               {isLogin && <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required />}
                
                <div className="relative">
-                 <input 
-                   type={showPassword ? "text" : "password"} 
-                   className={`${inputClass} pr-10`} 
-                   placeholder="Password" 
-                   value={password} 
-                   onChange={e => setPassword(e.target.value)} 
-                   required 
-                 />
+                 <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                  </button>
                </div>
+
+               {!isLogin && <p className="text-[10px] text-gray-400 text-center flex items-center justify-center gap-1"><ShieldCheck size={12}/> Use a NEW password. Not your email password.</p>}
 
                {!isLogin && (
                  <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
@@ -223,13 +279,12 @@ export default function App() {
                  </label>
                )}
 
-               <button className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all">
-                 {isLogin ? "Unlock Campus" : "Join Now"}
+               <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
+                 {authLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
                </button>
-
                <div className="text-center pt-2">
                  <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-gray-400 hover:text-white transition-colors">
-                   {isLogin ? "New Student? Sign Up" : "Already have an ID? Login"}
+                   {isLogin ? "New here? Sign Up" : "Have an account? Login"}
                  </button>
                </div>
             </form>
@@ -239,12 +294,9 @@ export default function App() {
     );
   }
 
-  // --- MAIN APP ---
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-24 relative">
       <div className="fixed top-0 left-0 right-0 h-96 bg-gradient-to-b from-[#003366]/20 to-transparent pointer-events-none" />
-
-      {/* HEADER */}
       <nav className="sticky top-0 z-50 glass border-b-0 border-b-white/5 bg-[#050505]/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3" onClick={() => setView('market')}>
@@ -260,118 +312,82 @@ export default function App() {
       </nav>
 
       <div className="max-w-3xl mx-auto p-4 space-y-6 relative z-10">
-        
-        {/* MARKET FEED */}
         {view === 'market' && (
           <div className="animate-slide-up space-y-5">
             <div className="space-y-3">
-              {/* SEARCH INPUT */}
               <div className="relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Search listings..." 
-                  className={`${inputClass} pl-11`}
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
+                <input type="text" placeholder="Search listings..." className={`${inputClass} pl-11`} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
               </div>
-              
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {['All', 'SELL', 'RENT'].map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)}
-                    className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeCategory === cat ? 'bg-white text-black border-white' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`}>
-                    {cat === 'All' ? 'Everything' : cat === 'SELL' ? 'For Sale' : 'For Rent'}
+                {['All', 'Electronics', 'Books', 'Lab Gear', 'Hostel'].map(cat => (
+                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeCategory === cat ? 'bg-white text-black border-white' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`}>
+                    {cat}
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* LISTINGS GRID */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredListings.map(item => (
-                <div key={item.id} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-                  <div className="relative h-48">
-                    <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                    <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
-                      <div>
-                        <h3 className="font-bold text-white text-lg truncate shadow-black drop-shadow-md">{item.name}</h3>
-                        <p className="text-xs text-gray-300 flex items-center gap-1">
-                          <User size={12}/> {item.sellerName}
-                        </p>
-                      </div>
-                      <span className="bg-white/20 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white border border-white/20">
-                        Rs. {item.price}
-                      </span>
-                    </div>
-                    {item.isUrgent && (
-                      <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg animate-pulse">
-                        <Zap size={10} fill="white"/> URGENT
+            {isLoading ? <LoadingSkeleton /> : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {filteredListings.map(item => (
+                  <div key={item.id} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300 relative">
+                    {item.status === 'SOLD' && (
+                      <div className="absolute inset-0 bg-black/80 z-20 flex items-center justify-center">
+                        <div className="bg-red-500 text-white font-bold px-4 py-2 rounded-xl transform -rotate-12 border-2 border-white">SOLD</div>
                       </div>
                     )}
-                    <div className="absolute top-2 right-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">
-                      {item.condition}
+                    <div className="relative h-48">
+                      <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                      <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
+                        <div>
+                          <h3 className="font-bold text-white text-lg truncate shadow-black drop-shadow-md">{item.name}</h3>
+                          <p className="text-xs text-gray-300 flex items-center gap-1"><User size={12}/> {item.sellerName}</p>
+                        </div>
+                        <span className="bg-white/20 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white border border-white/20">Rs. {item.price}</span>
+                      </div>
+                      {item.isUrgent && <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg animate-pulse"><Zap size={10} fill="white"/> URGENT</div>}
+                      <div className="absolute top-2 right-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">{item.condition}</div>
+                    </div>
+                    <div className="p-3">
+                      <div className="flex justify-between items-center mb-2">
+                         <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md">{item.category}</span>
+                         <button onClick={() => {if(window.confirm('Report this item?')) reportListing(item.id, 'User Report')}} className="text-gray-600 hover:text-red-500" title="Report"><Flag size={12}/></button>
+                      </div>
+                      <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
+                      {item.seller !== user.email && item.status !== 'SOLD' && (
+                        <button onClick={() => setActiveChat(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2">
+                          <MessageCircle size={16}/> Chat Now
+                        </button>
+                      )}
                     </div>
                   </div>
-                  
-                  <div className="p-3">
-                    <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
-                    {item.seller !== user.email && (
-                      <button onClick={() => setActiveChat(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2">
-                        <MessageCircle size={16}/> Chat Now
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {filteredListings.length === 0 && (
-               <div className="text-center py-20 opacity-50">
-                  <Search size={48} className="mx-auto mb-2 text-gray-600"/>
-                  <p>No listings found</p>
-               </div>
+                ))}
+              </div>
             )}
+            {!isLoading && filteredListings.length === 0 && <div className="text-center py-20 opacity-50"><Search size={48} className="mx-auto mb-2 text-gray-600"/><p>No listings found</p></div>}
           </div>
         )}
-
-        {/* REQUESTS & MARKET RUNS */}
+        
         {view === 'requests' && (
           <div className="animate-slide-up space-y-6">
             <div className="glass-card p-5 rounded-2xl border-l-4 border-l-yellow-500">
-               <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                 <ClipboardList className="text-yellow-500"/> Community Board
-               </h2>
-               
-               <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  if(!reqText.trim()) return;
-                  await createRequest({ text: reqText, user: user.email, userName: user.displayName, isMarketRun });
-                  setReqText(''); refreshData();
-               }} className="space-y-3">
+               <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2"><ClipboardList className="text-yellow-500"/> Community Board</h2>
+               <form onSubmit={async (e) => { e.preventDefault(); if(!reqText.trim()) return; await createRequest({ text: reqText, user: user.email, userName: user.displayName, isMarketRun }); setReqText(''); refreshData(); }} className="space-y-3">
                  <div className="flex gap-2">
                     <button type="button" onClick={() => setIsMarketRun(false)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${!isMarketRun ? 'bg-yellow-500 text-black' : 'bg-[#15161a] text-gray-500'}`}>I NEED ITEM</button>
                     <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`}>I'M GOING TO MARKET</button>
                  </div>
                  <div className="flex gap-2">
-                   {/* REQUEST INPUT */}
-                   <input 
-                     value={reqText} 
-                     onChange={e => setReqText(e.target.value)} 
-                     className={`${inputClass} flex-1`}
-                     placeholder={isMarketRun ? "e.g. Going to Saddar at 5pm..." : "e.g. I need an Arduino..."} 
-                   />
+                   <input value={reqText} onChange={e => setReqText(e.target.value)} className={`${inputClass} flex-1`} placeholder={isMarketRun ? "e.g. Going to Saddar at 5pm..." : "e.g. I need an Arduino..."} />
                    <button className="p-3 bg-white text-black rounded-xl hover:scale-105 transition-transform"><Send size={20}/></button>
                  </div>
                </form>
             </div>
-
             <div className="space-y-3">
               {requests.map(req => (
                 <div key={req.id} className={`p-4 rounded-xl border flex items-start gap-4 ${req.isMarketRun ? 'bg-green-900/10 border-green-500/30' : 'bg-[#1a1c22] border-white/5'}`}>
-                  <div className={`p-3 rounded-full ${req.isMarketRun ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>
-                    {req.isMarketRun ? <Truck size={20}/> : <AlertTriangle size={20}/>}
-                  </div>
+                  <div className={`p-3 rounded-full ${req.isMarketRun ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>{req.isMarketRun ? <Truck size={20}/> : <AlertTriangle size={20}/>}</div>
                   <div>
                     <h4 className="font-bold text-white">{req.isMarketRun ? "Market Run Alert" : "Request"}</h4>
                     <p className="text-gray-300 text-sm mt-1">{req.text}</p>
@@ -383,58 +399,33 @@ export default function App() {
           </div>
         )}
 
-        {/* CREATE LISTING FORM */}
+        {/* POST, INBOX, PROFILE (Unchanged logic, just keeping UI consistency) */}
         {view === 'post' && (
           <div className="glass-card p-6 rounded-3xl animate-slide-up">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-              <Plus className="text-blue-500"/> List Item
-            </h2>
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Plus className="text-blue-500"/> List Item</h2>
             <form onSubmit={handlePostItem} className="space-y-5">
-              
-              {/* Image Upload */}
               <div className="relative w-full h-48 rounded-2xl border-2 border-dashed border-white/10 hover:border-blue-500/50 bg-[#15161a] flex flex-col items-center justify-center cursor-pointer transition-colors group overflow-hidden">
                 <input type="file" onChange={e => setImageFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                {imageFile ? (
-                   <img src={URL.createObjectURL(imageFile)} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="text-center group-hover:scale-105 transition-transform">
-                    <Camera size={32} className="text-gray-500 mx-auto mb-2"/>
-                    <p className="text-xs text-gray-400">Tap to upload</p>
-                  </div>
-                )}
+                {imageFile ? <img src={URL.createObjectURL(imageFile)} className="w-full h-full object-cover" /> : <div className="text-center group-hover:scale-105 transition-transform"><Camera size={32} className="text-gray-500 mx-auto mb-2"/><p className="text-xs text-gray-400">Tap to upload</p></div>}
               </div>
-
-              {/* Toggles */}
               <div className="flex gap-3">
                  <div className="flex-1 bg-[#15161a] p-1 rounded-xl flex">
-                   {['SELL', 'RENT'].map(t => (
-                     <button type="button" key={t} onClick={() => setListingType(t)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${listingType === t ? 'bg-[#252830] text-white shadow' : 'text-gray-500'}`}>{t}</button>
-                   ))}
+                   {['SELL', 'RENT'].map(t => <button type="button" key={t} onClick={() => setListingType(t)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${listingType === t ? 'bg-[#252830] text-white shadow' : 'text-gray-500'}`}>{t}</button>)}
                  </div>
-                 <button type="button" onClick={() => setIsUrgent(!isUrgent)} className={`px-4 rounded-xl border border-white/5 flex flex-col items-center justify-center transition-all ${isUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500'}`}>
-                    <Zap size={16} fill={isUrgent ? "currentColor" : "none"}/>
-                    <span className="text-[10px] font-bold">URGENT</span>
-                 </button>
+                 <button type="button" onClick={() => setIsUrgent(!isUrgent)} className={`px-4 rounded-xl border border-white/5 flex flex-col items-center justify-center transition-all ${isUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500'}`}><Zap size={16} fill={isUrgent ? "currentColor" : "none"}/><span className="text-[10px] font-bold">URGENT</span></button>
               </div>
-
-              {/* LISTING INPUTS */}
               <input value={itemName} onChange={e => setItemName(e.target.value)} className={inputClass} placeholder="Title (e.g. Lab Coat)" />
               <div className="flex gap-3">
-                <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={`${inputClass} flex-1`} placeholder="Price" />
-                <select value={condition} onChange={e => setCondition(e.target.value)} className={`${inputClass} flex-1`}>
-                  <option>New</option><option>Like New</option><option>Used</option><option>For Parts</option>
-                </select>
+                <select value={category} onChange={e => setCategory(e.target.value)} className={`${inputClass} flex-1`}><option>Electronics</option><option>Books</option><option>Lab Gear</option><option>Hostel</option></select>
+                <select value={condition} onChange={e => setCondition(e.target.value)} className={`${inputClass} flex-1`}><option>New</option><option>Like New</option><option>Used</option></select>
               </div>
+              <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={inputClass} placeholder="Price (PKR)" />
               <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className={`${inputClass} h-32 resize-none`} placeholder="Description..." />
-
-              <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all">
-                {isUploading ? "Uploading..." : "Publish to Market"}
-              </button>
+              <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all">{isUploading ? "Uploading..." : "Publish to Market"}</button>
             </form>
           </div>
         )}
 
-        {/* INBOX & PROFILE */}
         {view === 'inbox' && (
           <div className="space-y-4 animate-slide-up">
             <h2 className="text-xl font-bold">Messages</h2>
@@ -454,65 +445,70 @@ export default function App() {
           <div className="glass-card p-8 rounded-3xl text-center animate-slide-up relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-blue-600/20 to-transparent"/>
              <div className="relative z-10">
-               <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center text-3xl font-bold border-4 border-[#1a1c22] shadow-xl mb-4">
-                 {user.email[0].toUpperCase()}
+               <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center border-4 border-[#1a1c22] shadow-xl mb-4 overflow-hidden">
+                 {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover"/> : <span className="text-3xl font-bold">{user.email[0].toUpperCase()}</span>}
                </div>
                <h2 className="text-2xl font-bold">{user.displayName}</h2>
                <p className="text-gray-400 text-sm mb-4">{user.email}</p>
-               <div className="flex justify-center gap-1 mb-6">
-                 {[1,2,3,4,5].map(i => <Star key={i} size={16} fill="#fbbf24" className="text-yellow-400"/>)}
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-[#15161a] rounded-xl border border-white/5">
-                    <h3 className="text-2xl font-bold text-white">{listings.filter(l => l.seller === user.email).length}</h3>
-                    <p className="text-xs text-gray-500 uppercase">Listings</p>
-                  </div>
-                  <div className="p-4 bg-[#15161a] rounded-xl border border-white/5">
-                    <h3 className="text-2xl font-bold text-white">5.0</h3>
-                    <p className="text-xs text-gray-500 uppercase">Reputation</p>
-                  </div>
+               <div className="flex justify-center gap-1 mb-6">{[1,2,3,4,5].map(i => <Star key={i} size={16} fill="#fbbf24" className="text-yellow-400"/>)}</div>
+               
+               <div className="text-left space-y-3">
+                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">My Listings</h3>
+                 {listings.filter(l => l.seller === user.email).map(item => (
+                   <div key={item.id} className="bg-[#15161a] p-3 rounded-xl border border-white/5 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                         <img src={item.image} className="w-10 h-10 rounded-lg object-cover" />
+                         <div><span className="font-bold text-sm block">{item.name}</span><span className={`text-[10px] px-1.5 py-0.5 rounded ${item.status === 'SOLD' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>{item.status}</span></div>
+                      </div>
+                      <div className="flex gap-2">
+                         <button onClick={() => setDeleteModalItem(item.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 size={16}/></button>
+                      </div>
+                   </div>
+                 ))}
                </div>
              </div>
           </div>
         )}
-
       </div>
 
-      {/* CHAT MODAL */}
       {activeChat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
            <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
               <div className="p-4 bg-[#15161a] flex justify-between items-center border-b border-white/5">
-                 <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{activeChat.name[0]}</div>
-                   <h3 className="font-bold text-sm">{activeChat.name}</h3>
-                 </div>
+                 <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{activeChat.name[0]}</div><h3 className="font-bold text-sm">{activeChat.name}</h3></div>
                  <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full"><X size={18}/></button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
                  {chatMessages.map(m => (
                    <div key={m.id} className={`flex ${m.sender === user.email ? 'justify-end' : 'justify-start'}`}>
-                     <div className={`p-3 rounded-2xl text-sm max-w-[80%] ${m.sender===user.email ? 'bg-blue-600 text-white' : 'bg-[#252830] text-gray-200'}`}>
-                       {m.text}
-                     </div>
+                     <div className={`p-3 rounded-2xl text-sm max-w-[80%] ${m.sender===user.email ? 'bg-blue-600 text-white' : 'bg-[#252830] text-gray-200'}`}>{m.text}</div>
                    </div>
                  ))}
+                 <div ref={messagesEndRef} />
               </div>
-              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2">
-                 {/* CHAT INPUT */}
-                 <input 
-                    value={newMsg} 
-                    onChange={e=>setNewMsg(e.target.value)} 
-                    className={`${inputClass} flex-1`}
-                    placeholder="Type..." 
-                 />
-                 <button className="p-3 bg-blue-600 rounded-xl"><Send size={18}/></button>
-              </form>
+              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type..." /><button className="p-3 bg-blue-600 rounded-xl"><Send size={18}/></button></form>
            </div>
         </div>
       )}
 
-      {/* FLOATING NAV */}
+      {/* DELETE MODAL (The Wizard) */}
+      {deleteModalItem && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+           <div className="bg-[#1a1c22] w-full max-w-sm rounded-3xl p-6 border border-white/10 shadow-2xl animate-slide-up">
+              <div className="text-center mb-6">
+                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="text-red-500" size={32}/></div>
+                 <h3 className="text-xl font-bold text-white">Remove Listing?</h3>
+                 <p className="text-gray-400 text-sm mt-1">Why are you removing this item?</p>
+              </div>
+              <div className="space-y-3">
+                 <button onClick={() => handleDeleteDecision('SOLD')} className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold flex items-center justify-center gap-2"><CheckCircle size={18}/> Mark as Sold (Keep Reputation)</button>
+                 <button onClick={() => handleDeleteDecision('DELETE')} className="w-full py-3.5 rounded-xl bg-[#252830] hover:bg-red-500/20 hover:text-red-400 text-gray-400 font-bold border border-white/5">Item Damaged / Just Delete</button>
+                 <button onClick={() => setDeleteModalItem(null)} className="w-full py-3 text-sm text-gray-500">Cancel</button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#15161a]/80 backdrop-blur-xl border border-white/10 p-1.5 rounded-full flex gap-1 shadow-2xl z-40">
         <NavBtn icon={ShoppingBag} active={view === 'market'} onClick={() => setView('market')} />
         <NavBtn icon={Mail} active={view === 'inbox'} onClick={() => setView('inbox')} />
@@ -520,7 +516,6 @@ export default function App() {
         <NavBtn icon={ClipboardList} active={view === 'requests'} onClick={() => setView('requests')} />
         <NavBtn icon={User} active={view === 'profile'} onClick={() => setView('profile')} />
       </div>
-
     </div>
   );
 }
