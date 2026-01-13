@@ -110,6 +110,7 @@ export default function App() {
 
   useEffect(() => {
     if (activeChat) {
+      // Subscribe to chat messages
       const unsubscribe = listenToMessages(activeChat.id, (msgs) => setChatMessages(msgs));
       return () => unsubscribe();
     }
@@ -386,17 +387,18 @@ export default function App() {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
                 <input type="text" placeholder="Search listings..." className={`${inputClass} pl-11`} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
               </div>
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              <div className="flex justify-between items-center bg-[#1a1c22] p-2 rounded-2xl border border-white/5">
+                <div className="flex gap-2">
                   {['All', 'New', 'Used'].map(cat => (
-                    <button key={cat} onClick={() => setActiveCondition(cat)} className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeCondition === cat ? 'bg-white text-black border-white' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`} title="Filter by Condition">
+                    <button key={cat} onClick={() => setActiveCondition(cat)} className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activeCondition === cat ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`} title="Filter by Condition">
                       {cat}
                     </button>
                   ))}
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="w-px h-6 bg-white/10 mx-2"></div>
+                <div className="flex gap-2">
                   {['All', 'Buy', 'Rent'].map(type => (
-                    <button key={type} onClick={() => setActiveType(type === 'Buy' ? 'SELL' : type === 'Rent' ? 'RENT' : 'All')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border ${activeType === (type === 'Buy' ? 'SELL' : type === 'Rent' ? 'RENT' : 'All') ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent text-gray-400 border-white/10 hover:border-white/30'}`} title="Filter by Type">
+                    <button key={type} onClick={() => setActiveType(type === 'Buy' ? 'SELL' : type === 'Rent' ? 'RENT' : 'All')} className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${activeType === (type === 'Buy' ? 'SELL' : type === 'Rent' ? 'RENT' : 'All') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`} title="Filter by Type">
                       {type}
                     </button>
                   ))}
@@ -444,11 +446,6 @@ export default function App() {
             {!isLoading && filteredListings.length === 0 && <div className="text-center py-20 opacity-50"><Search size={48} className="mx-auto mb-2 text-gray-600"/><p>No listings found</p></div>}
           </div>
         )}
-        
-        {/* ... Community Board, Post, Inbox, Profile, Chat Modals ... */}
-        {/* These sections are already fully populated in the code block above */}
-        {/* I am ensuring they are 100% identical to the previous request + the fixes */}
-        {/* ... */}
         
         {view === 'requests' && (
           <div className="animate-slide-up space-y-6">
@@ -512,16 +509,16 @@ export default function App() {
         )}
 
         {view === 'post' && (
-          <div className="glass-card p-6 rounded-3xl animate-slide-up">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Plus className="text-blue-500"/> List Item</h2>
+          <div className="glass-card p-6 rounded-3xl animate-slide-up border-t border-white/20 bg-gradient-to-br from-[#1a1c22] to-[#0f1012]">
+            <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400 mb-6 flex items-center gap-2"><Plus className="text-blue-500"/> List Item</h2>
             <form onSubmit={handlePostItem} className="space-y-5">
               <div className="relative w-full h-48 rounded-2xl border-2 border-dashed border-white/10 hover:border-blue-500/50 bg-[#15161a] flex flex-col items-center justify-center cursor-pointer transition-colors group overflow-hidden">
                 <input type="file" onChange={e => setImageFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
                 {imageFile ? <img src={URL.createObjectURL(imageFile)} className="w-full h-full object-cover" /> : <div className="text-center group-hover:scale-105 transition-transform"><Camera size={32} className="text-gray-500 mx-auto mb-2"/><p className="text-xs text-gray-400">Tap to upload</p></div>}
               </div>
               <div className="flex gap-3">
-                 <div className="flex-1 bg-[#15161a] p-1 rounded-xl flex">
-                   {['SELL', 'RENT'].map(t => <button type="button" key={t} onClick={() => setListingType(t)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${listingType === t ? 'bg-[#252830] text-white shadow' : 'text-gray-500'}`}>{t}</button>)}
+                 <div className="flex-1 bg-[#15161a] p-1 rounded-xl flex border border-white/5">
+                   {['SELL', 'RENT'].map(t => <button type="button" key={t} onClick={() => setListingType(t)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${listingType === t ? 'bg-[#252830] text-white shadow-lg shadow-black/50' : 'text-gray-500 hover:text-white'}`}>{t}</button>)}
                  </div>
               </div>
               <input value={itemName} onChange={e => setItemName(e.target.value)} className={inputClass} placeholder="Title (e.g. Lab Coat)" />
@@ -531,7 +528,7 @@ export default function App() {
               </div>
               <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={inputClass} placeholder="Price (PKR)" />
               <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className={`${inputClass} h-32 resize-none`} placeholder="Description..." />
-              <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all">{isUploading ? "Uploading..." : "Publish to Market"}</button>
+              <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-green-500 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all transform hover:scale-[1.02]">{isUploading ? "Uploading..." : "Publish to Market"}</button>
             </form>
           </div>
         )}
