@@ -62,9 +62,7 @@ export const getPublicProfile = async (email) => {
   return !snap.empty ? snap.docs[0].data() : null;
 };
 
-// --- MARKETPLACE & FEED (PERSISTENT LISTENER OPTION) ---
-// Note: We use getDocs for the feed to save reads, but if you want real-time feed, switch to onSnapshot here.
-// For now, we fix the "Race Condition" by calling this immediately after auth in App.js
+// --- MARKETPLACE ---
 export const getListings = async () => {
   const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'), limit(50));
   const snap = await getDocs(q);
@@ -95,27 +93,19 @@ export const getRequests = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// --- REAL-TIME CHAT ARCHITECTURE (SOCKET LOGIC) ---
-
+// --- CHAT (FIXED REAL-TIME LISTENER) ---
 export const sendMessage = async (chatId, sender, text) => {
-  // This triggers the onSnapshot listener immediately for optimistic UI
+  // Use a temporary timestamp if serverTimestamp is slow, but rely on listener for UI
   await addDoc(collection(db, 'messages'), { 
     chatId, 
     sender, 
     text, 
-    createdAt: serverTimestamp() // Server assigns time, local listener handles latency
+    createdAt: serverTimestamp() 
   });
 };
 
-// THE FIX: Returns the Unsubscribe function for useEffect cleanup
 export const listenToMessages = (chatId, callback) => {
-  const q = query(
-    collection(db, 'messages'), 
-    where('chatId', '==', chatId), 
-    orderBy('createdAt', 'asc') // Chronological order
-  );
-  
-  // onSnapshot opens the WebSocket connection
+  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), orderBy('createdAt', 'asc'));
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(messages);

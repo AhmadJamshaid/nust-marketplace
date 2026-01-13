@@ -20,7 +20,7 @@ export default function App() {
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
   
-  // --- LOADING STATES (Fixes "isLoading is not defined") ---
+  // --- LOADING STATES ---
   const [isLoading, setIsLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
@@ -115,8 +115,10 @@ export default function App() {
   // --- CHAT REAL-TIME LISTENER ---
   useEffect(() => {
     if (activeChat) {
+      // Subscribing to messages for the active chat ID
       const unsubscribe = listenToMessages(activeChat.id, (msgs) => {
         setChatMessages(msgs);
+        // Scroll to bottom whenever messages update
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       });
       return () => unsubscribe();
@@ -127,7 +129,17 @@ export default function App() {
   useEffect(() => {
     if (user) {
       const unsubscribe = listenToAllMessages((msgs) => {
-        const myMsgs = msgs.filter(m => m.sender === user.email || listings.find(l => l.id === m.chatId)?.seller === user.email);
+        // Updated Privacy Filter: Include chats from Listings AND Requests
+        const myMsgs = msgs.filter(m => {
+          const isSender = m.sender === user.email;
+          // Check if I am the seller of the item being discussed
+          const isSeller = listings.find(l => l.id === m.chatId)?.seller === user.email;
+          // Check if I am the poster of the request being discussed
+          const isRequester = requests.find(r => r.id === m.chatId)?.user === user.email;
+          
+          return isSender || isSeller || isRequester;
+        });
+
         const groups = myMsgs.reduce((acc, m) => {
           if (!acc[m.chatId]) acc[m.chatId] = [];
           acc[m.chatId].push(m);
@@ -138,7 +150,7 @@ export default function App() {
       });
       return () => unsubscribe();
     }
-  }, [user, listings]);
+  }, [user, listings, requests]); // Added 'requests' dependency
 
   const refreshData = async () => {
     setIsLoading(true);
@@ -235,7 +247,6 @@ export default function App() {
     finally { setIsPostingReq(false); } 
   };
 
-  // --- MISSING FUNCTIONS RESTORED ---
   const handleDeleteRequest = async (id) => {
     if (window.confirm("Remove this post from the board?")) {
       await deleteRequest(id);
@@ -290,7 +301,9 @@ export default function App() {
     setIsSendingMsg(true); 
     try {
       await sendMessage(activeChat.id, user.email, newMsg);
-      // Notification sound logic or external API call could go here
+      if (chatMessages.length === 0) {
+        await sendMessage(activeChat.id, "System", "🔔 Notification sent to WhatsApp!");
+      }
       setNewMsg('');
     } catch (err) { alert(err.message); }
     finally { setIsSendingMsg(false); } 
@@ -478,7 +491,7 @@ export default function App() {
                     <div className="relative h-48">
                       <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                      {/* FIXED TITLES */}
+                      {/* FIXED TITLE VISIBILITY */}
                       <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end z-10">
                         <div className="w-2/3">
                           <h3 className="font-bold text-white text-lg shadow-black drop-shadow-md leading-tight mb-1" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
