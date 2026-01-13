@@ -62,8 +62,9 @@ export const getPublicProfile = async (email) => {
   return !snap.empty ? snap.docs[0].data() : null;
 };
 
-// --- MARKETPLACE ---
+// --- MARKETPLACE (FEED) ---
 export const getListings = async () => {
+  // Fetch latest 50 items. This is a one-time fetch, but called immediately on app load.
   const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'), limit(50));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -93,19 +94,38 @@ export const getRequests = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// --- CHAT ---
+// --- REAL-TIME CHAT LISTENERS ---
+
 export const sendMessage = async (chatId, sender, text) => {
-  await addDoc(collection(db, 'messages'), { chatId, sender, text, createdAt: serverTimestamp() });
+  await addDoc(collection(db, 'messages'), { 
+    chatId, 
+    sender, 
+    text, 
+    createdAt: serverTimestamp() // Critical for ordering
+  });
 };
 
+/**
+ * SOCKET LOGIC: Listens to a specific chat room in real-time.
+ * Returns: Unsubscribe function (to close connection when chat closes)
+ */
 export const listenToMessages = (chatId, callback) => {
-  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), orderBy('createdAt', 'asc'));
+  const q = query(
+    collection(db, 'messages'), 
+    where('chatId', '==', chatId), 
+    orderBy('createdAt', 'asc') // Ensure chronological order
+  );
+  
+  // onSnapshot is the WebSocket wrapper
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     callback(messages);
   });
 };
 
+/**
+ * GLOBAL INBOX LISTENER: Listens to ALL messages to build the inbox list.
+ */
 export const listenToAllMessages = (callback) => {
   const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
