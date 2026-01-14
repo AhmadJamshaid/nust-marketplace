@@ -69,6 +69,18 @@ export const getListings = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
+// Real-time listener for listings
+export const listenToListings = (callback) => {
+  const q = query(collection(db, 'listings'), orderBy('createdAt', 'desc'), limit(50));
+  return onSnapshot(q, (snap) => {
+    const listings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(listings);
+  }, (error) => {
+    console.error("Listings listener error:", error);
+    callback([]);
+  });
+};
+
 export const createListing = (data) => addDoc(collection(db, 'listings'), { ...data, status: 'ACTIVE', createdAt: serverTimestamp() });
 export const markListingSold = async (listingId) => await updateDoc(doc(db, 'listings', listingId), { status: 'SOLD' });
 export const deleteListing = async (listingId) => await deleteDoc(doc(db, 'listings', listingId));
@@ -93,30 +105,69 @@ export const getRequests = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// --- CHAT (FIXED REAL-TIME LISTENER) ---
+// Real-time listener for requests
+export const listenToRequests = (callback) => {
+  const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'), limit(20));
+  return onSnapshot(q, (snap) => {
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(requests);
+  }, (error) => {
+    console.error("Requests listener error:", error);
+    callback([]);
+  });
+};
+
+// --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
 export const sendMessage = async (chatId, sender, text) => {
-  // Use a temporary timestamp if serverTimestamp is slow, but rely on listener for UI
+  // Use Date.now() for instant local timestamp, serverTimestamp for ordering
+  const timestamp = new Date();
   await addDoc(collection(db, 'messages'), { 
     chatId, 
     sender, 
     text, 
-    createdAt: serverTimestamp() 
+    createdAt: serverTimestamp(),
+    clientTimestamp: timestamp.toISOString() 
   });
 };
 
 export const listenToMessages = (chatId, callback) => {
-  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), orderBy('createdAt', 'asc'));
+  const q = query(
+    collection(db, 'messages'), 
+    where('chatId', '==', chatId), 
+    orderBy('createdAt', 'asc')
+  );
   return onSnapshot(q, (snap) => {
-    const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const messages = snap.docs.map(d => {
+      const data = d.data();
+      return { 
+        id: d.id, 
+        ...data,
+        // Use clientTimestamp if serverTimestamp is not yet set
+        createdAt: data.createdAt || new Date(data.clientTimestamp)
+      };
+    });
     callback(messages);
+  }, (error) => {
+    console.error("Messages listener error:", error);
+    callback([]);
   });
 };
 
 export const listenToAllMessages = (callback) => {
   const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
-    const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const messages = snap.docs.map(d => {
+      const data = d.data();
+      return { 
+        id: d.id, 
+        ...data,
+        createdAt: data.createdAt || new Date(data.clientTimestamp)
+      };
+    });
     callback(messages);
+  }, (error) => {
+    console.error("All messages listener error:", error);
+    callback([]);
   });
 };
 

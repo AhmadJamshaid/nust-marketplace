@@ -10,7 +10,8 @@ import {
   getListings, createListing, getRequests, createRequest, deleteRequest,
   resendVerificationLink, sendMessage, listenToMessages, 
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser, 
-  deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat
+  deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
+  listenToListings, listenToRequests
 } from './firebaseFunctions';
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
   const [isSendingMsg, setIsSendingMsg] = useState(false); 
   const messagesEndRef = useRef(null);
   const [hasUnread, setHasUnread] = useState(false);
+  const [unreadChats, setUnreadChats] = useState(new Set());
 
   // Auth Inputs
   const [email, setEmail] = useState('');
@@ -83,7 +85,7 @@ export default function App() {
 
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
-  // --- INITIALIZATION ---
+  // --- INITIALIZATION WITH REAL-TIME LISTENERS ---
   useEffect(() => {
     const unsubscribe = authStateListener(async (u) => {
       setUser(u);
@@ -94,73 +96,83 @@ export default function App() {
       setIsAuthChecking(false);
     });
 
-    // Immediate Data Fetch
-    const initData = async () => {
-      setIsLoading(true);
-      try {
-        const [items, reqs] = await Promise.all([getListings(), getRequests()]);
-        setListings(items); 
-        setRequests(reqs);
-      } catch (e) {
-        console.error("Feed error:", e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    initData();
+    return () => unsubscribe();
+  }, []);
+
+  // --- REAL-TIME LISTINGS LISTENER ---
+  useEffect(() => {
+    setIsLoading(true);
+    const unsubscribe = listenToListings((items) => {
+      setListings(items);
+      setIsLoading(false);
+    });
 
     return () => unsubscribe();
   }, []);
 
-  // --- CHAT REAL-TIME LISTENER ---
+  // --- REAL-TIME REQUESTS LISTENER ---
+  useEffect(() => {
+    const unsubscribe = listenToRequests((reqs) => {
+      setRequests(reqs);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- CHAT REAL-TIME LISTENER WITH AUTO-SCROLL ---
   useEffect(() => {
     if (activeChat) {
-      // Subscribing to messages for the active chat ID
       const unsubscribe = listenToMessages(activeChat.id, (msgs) => {
         setChatMessages(msgs);
-        // Scroll to bottom whenever messages update
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+        // Immediate scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
       });
       return () => unsubscribe();
+    } else {
+      setChatMessages([]);
     }
   }, [activeChat]);
 
-  // --- INBOX LISTENER ---
+  // --- INBOX LISTENER WITH UNREAD DETECTION ---
   useEffect(() => {
     if (user) {
       const unsubscribe = listenToAllMessages((msgs) => {
-        // Updated Privacy Filter: Include chats from Listings AND Requests
+        // Filter messages based on user's relationship to listings and requests
         const myMsgs = msgs.filter(m => {
           const isSender = m.sender === user.email;
-          // Check if I am the seller of the item being discussed
           const isSeller = listings.find(l => l.id === m.chatId)?.seller === user.email;
-          // Check if I am the poster of the request being discussed
           const isRequester = requests.find(r => r.id === m.chatId)?.user === user.email;
           
           return isSender || isSeller || isRequester;
         });
 
+        // Group messages by chat
         const groups = myMsgs.reduce((acc, m) => {
           if (!acc[m.chatId]) acc[m.chatId] = [];
           acc[m.chatId].push(m);
           return acc;
         }, {});
+
         setInboxGroups(groups);
-        setHasUnread(myMsgs.some(m => m.sender !== user.email)); 
+
+        // Calculate unread messages
+        const unreadChatIds = new Set();
+        Object.keys(groups).forEach(chatId => {
+          const chatMsgs = groups[chatId];
+          const hasUnreadInChat = chatMsgs.some(m => m.sender !== user.email);
+          if (hasUnreadInChat) {
+            unreadChatIds.add(chatId);
+          }
+        });
+
+        setUnreadChats(unreadChatIds);
+        setHasUnread(unreadChatIds.size > 0);
       });
       return () => unsubscribe();
     }
-  }, [user, listings, requests]); // Added 'requests' dependency
-
-  const refreshData = async () => {
-    setIsLoading(true);
-    try {
-      const [items, reqs] = await Promise.all([getListings(), getRequests()]);
-      setListings(items); 
-      setRequests(reqs);
-    } catch (e) { console.error(e); } 
-    finally { setIsLoading(false); }
-  };
+  }, [user, listings, requests]);
 
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
@@ -212,8 +224,7 @@ export default function App() {
         image: imageUrl, seller: user.email, sellerName: user.displayName || "NUST Student", 
         sellerDept: department, sellerReputation: 5.0 
       });
-      const items = await getListings();
-      setListings(items);
+      // No need to manually refresh - real-time listener will update
       setView('market'); 
       setItemName(''); setItemPrice(''); setImageFile(null); setItemDesc('');
     } catch (err) { alert(err.message); } 
@@ -225,8 +236,7 @@ export default function App() {
     try {
       if (decision === 'SOLD') { await markListingSold(deleteModalItem); } 
       else if (decision === 'DELETE') { await deleteListing(deleteModalItem); }
-      const items = await getListings();
-      setListings(items);
+      // No need to manually refresh - real-time listener will update
       setDeleteModalItem(null); 
     } catch (err) { alert(err.message); }
   };
@@ -240,8 +250,7 @@ export default function App() {
         title: reqTitle, text: reqDesc, user: user.email, 
         userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent 
       });
-      const reqs = await getRequests();
-      setRequests(reqs);
+      // No need to manually refresh - real-time listener will update
       setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); } 
@@ -250,8 +259,7 @@ export default function App() {
   const handleDeleteRequest = async (id) => {
     if (window.confirm("Remove this post from the board?")) {
       await deleteRequest(id);
-      const reqs = await getRequests();
-      setRequests(reqs);
+      // No need to manually refresh - real-time listener will update
     }
   };
 
@@ -292,7 +300,23 @@ export default function App() {
       setActiveChat({ 
         id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user 
       });
+      // Mark this chat as read when opened
+      setUnreadChats(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(req.id);
+        return newSet;
+      });
     }
+  };
+
+  const handleListingClick = (item) => {
+    setActiveChat(item);
+    // Mark this chat as read when opened
+    setUnreadChats(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(item.id);
+      return newSet;
+    });
   };
 
   const handleSendChat = async (e) => {
@@ -305,7 +329,10 @@ export default function App() {
         await sendMessage(activeChat.id, "System", "🔔 Notification sent to WhatsApp!");
       }
       setNewMsg('');
-    } catch (err) { alert(err.message); }
+    } catch (err) { 
+      console.error("Send message error:", err);
+      alert("Failed to send message. Please try again.");
+    }
     finally { setIsSendingMsg(false); } 
   };
 
@@ -327,7 +354,14 @@ export default function App() {
     </div>
   );
 
-  if (isAuthChecking) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
+  if (isAuthChecking) return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p className="text-gray-400 text-sm">Loading...</p>
+      </div>
+    </div>
+  );
 
   if (!user || (user && !user.emailVerified)) {
     return (
@@ -416,7 +450,7 @@ export default function App() {
       <div className="fixed top-0 left-0 right-0 h-96 bg-gradient-to-b from-[#003366]/20 to-transparent pointer-events-none" />
       <nav className="sticky top-0 z-50 glass border-b-0 border-b-white/5 bg-[#050505]/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3" onClick={() => setView('market')}>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
             <div className="bg-gradient-to-tr from-[#003366] to-[#3b82f6] p-1.5 rounded-lg">
                <ShoppingBag size={20} className="text-white"/>
             </div>
@@ -490,20 +524,22 @@ export default function App() {
                     )}
                     <div className="relative h-48">
                       <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                      {/* FIXED TITLE VISIBILITY */}
-                      <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end z-10">
-                        <div className="w-2/3">
-                          <h3 className="font-bold text-white text-lg shadow-black drop-shadow-md leading-tight mb-1" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
-                            {item.name}
-                          </h3>
-                          <p className="text-xs text-gray-200 flex items-center gap-1 shadow-black drop-shadow-md font-semibold">
-                            <User size={12}/> {item.sellerName}
-                          </p>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                      {/* FIXED TITLE WITH IMPROVED CONTRAST */}
+                      <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+                        <div className="flex justify-between items-end gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-white text-lg leading-tight mb-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] line-clamp-2">
+                              {item.name}
+                            </h3>
+                            <p className="text-xs text-white/90 flex items-center gap-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] font-medium">
+                              <User size={12}/> {item.sellerName}
+                            </p>
+                          </div>
+                          <span className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-sm font-bold text-white border border-white/30 shadow-lg shrink-0">
+                            Rs. {item.price}
+                          </span>
                         </div>
-                        <span className="bg-white/20 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white border border-white/20 shadow-lg">
-                          Rs. {item.price}
-                        </span>
                       </div>
                       {item.isUrgent && <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg animate-pulse z-10"><Zap size={10} fill="white"/> URGENT</div>}
                       <div className="absolute top-2 right-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10 z-10">{item.condition}</div>
@@ -515,7 +551,7 @@ export default function App() {
                       </div>
                       <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
                       {item.seller !== user.email && item.status !== 'SOLD' && (
-                        <button onClick={() => setActiveChat(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
+                        <button onClick={() => handleListingClick(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
                           <MessageCircle size={16}/> Chat Now
                         </button>
                       )}
@@ -648,18 +684,36 @@ export default function App() {
           <div className="space-y-4 animate-slide-up">
             <h2 className="text-xl font-bold">Messages</h2>
             {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
-              Object.keys(inboxGroups).map(id => (
-              <div key={id} onClick={() => setActiveChat(listings.find(l=>l.id===id) || {id, name:"Item"})} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
-                 <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400"><Mail size={20}/></div>
-                 <div className="flex-1">
-                   <h4 className="font-bold text-white">{listings.find(l=>l.id===id)?.name || "Chat"}</h4>
-                   <p className="text-sm text-gray-400 truncate">{inboxGroups[id][inboxGroups[id].length-1].text}</p>
-                 </div>
-                 <button onClick={(e) => {e.stopPropagation(); handleDeleteChat(id)}} className="absolute right-4 top-4 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Conversation">
-                   <XCircle size={18}/>
-                 </button>
-              </div>
-            ))}
+              Object.keys(inboxGroups).map(id => {
+                const chatItem = listings.find(l=>l.id===id) || requests.find(r=>r.id===id);
+                const chatName = chatItem?.name || chatItem?.title || "Chat";
+                const lastMessage = inboxGroups[id][inboxGroups[id].length-1];
+                const isUnread = unreadChats.has(id);
+                
+                return (
+                  <div key={id} onClick={() => {
+                    setActiveChat(chatItem || {id, name: chatName});
+                    setUnreadChats(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(id);
+                      return newSet;
+                    });
+                  }} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
+                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isUnread ? 'bg-blue-600' : 'bg-blue-600/20'}`}>
+                       <Mail size={20} className={isUnread ? 'text-white' : 'text-blue-400'}/>
+                       {isUnread && <span className="absolute top-2 left-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#1a1c22] animate-pulse"></span>}
+                     </div>
+                     <div className="flex-1 min-w-0">
+                       <h4 className={`font-bold truncate ${isUnread ? 'text-white' : 'text-gray-300'}`}>{chatName}</h4>
+                       <p className="text-sm text-gray-400 truncate">{lastMessage.text}</p>
+                     </div>
+                     <button onClick={(e) => {e.stopPropagation(); handleDeleteChat(id)}} className="absolute right-4 top-4 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Conversation">
+                       <XCircle size={18}/>
+                     </button>
+                  </div>
+                );
+              })
+            }
           </div>
         )}
 
@@ -725,13 +779,19 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
            <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
               <div className="p-4 bg-[#15161a] flex justify-between items-center border-b border-white/5">
-                 <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{activeChat.name[0]}</div><h3 className="font-bold text-sm">{activeChat.name}</h3></div>
+                 <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{(activeChat.name || activeChat.title || "Chat")[0]}</div><h3 className="font-bold text-sm">{activeChat.name || activeChat.title || "Chat"}</h3></div>
                  <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18}/></button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                 {chatMessages.length === 0 && (
+                   <div className="text-center text-gray-500 py-8">
+                     <MessageCircle size={48} className="mx-auto mb-2 opacity-50"/>
+                     <p className="text-sm">No messages yet. Start the conversation!</p>
+                   </div>
+                 )}
                  {chatMessages.map(m => (
                    <div key={m.id} className={`flex ${m.sender === user.email ? 'justify-end' : 'justify-start'}`}>
-                     <div className={`p-3 rounded-2xl text-sm max-w-[80%] ${m.sender===user.email ? 'bg-blue-600 text-white' : 'bg-[#252830] text-gray-200'}`}>
+                     <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender===user.email ? 'bg-blue-600 text-white' : m.sender==='System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
                         {m.text}
                         <div className="text-[9px] opacity-50 text-right mt-1">{formatTime(m.createdAt)}</div>
                      </div>
@@ -739,7 +799,12 @@ export default function App() {
                  ))}
                  <div ref={messagesEndRef} />
               </div>
-              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2"><input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type..." /><button disabled={isSendingMsg} className="p-3 bg-blue-600 rounded-xl disabled:opacity-50"><Send size={18}/></button></form>
+              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2 border-t border-white/5">
+                <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type a message..." />
+                <button disabled={isSendingMsg} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
+                  <Send size={18}/>
+                </button>
+              </form>
            </div>
         </div>
       )}
