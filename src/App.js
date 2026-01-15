@@ -2,16 +2,16 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
   MessageCircle, X, Mail, Star, Camera, Eye, EyeOff,
-  Search, Sliders, MapPin, AlertTriangle, ChevronRight, Check,
-  Zap, Clock, Truck, Tag, ShieldCheck, Phone, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
+  Search, Sliders, AlertTriangle,
+  Zap, Clock, Truck, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
 } from 'lucide-react';
 import {
   authStateListener, logoutUser, loginWithUsername, signUpUser,
-  getListings, createListing, getRequests, createRequest, deleteRequest,
+  createListing, createRequest, deleteRequest,
   resendVerificationLink, sendMessage, listenToMessages,
-  listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser,
+  listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
-  listenToListings, listenToRequests, markChatRead, updateRequest, updateListing, resetPassword
+  listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword
 } from './firebaseFunctions';
 
 export default function App() {
@@ -183,7 +183,6 @@ export default function App() {
 
         // Step 4: Calculate unread counts on RELEVANT chats
         const unreadCounts = {};
-        let totalUnread = 0;
 
         Object.keys(relevantGroups).forEach(chatId => {
           const chatMsgs = relevantGroups[chatId];
@@ -191,7 +190,6 @@ export default function App() {
           const unreadCount = chatMsgs.filter(m => !m.read && m.sender.toLowerCase() !== user.email.toLowerCase()).length;
           if (unreadCount > 0) {
             unreadCounts[chatId] = unreadCount;
-            totalUnread += 1;
           }
         });
 
@@ -470,7 +468,7 @@ export default function App() {
                   <div className="flex justify-center mb-2">
                     <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
                       <input type="file" onChange={e => setProfilePic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      {profilePic ? <img src={URL.createObjectURL(profilePic)} className="w-full h-full object-cover" /> : <Camera className="text-gray-500 group-hover:text-white" />}
+                      {profilePic ? <img src={URL.createObjectURL(profilePic)} className="w-full h-full object-cover" alt="Profile Preview" /> : <Camera className="text-gray-500 group-hover:text-white" />}
                     </div>
                   </div>
                   <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
@@ -701,7 +699,7 @@ export default function App() {
                 {productImages.length > 0 ? (
                   <div className="grid grid-cols-3 gap-2 p-2 w-full h-full overflow-hidden">
                     {productImages.slice(0, 3).map((file, idx) => (
-                      <img key={idx} src={URL.createObjectURL(file)} className="w-full h-full object-cover rounded" />
+                      <img key={idx} src={URL.createObjectURL(file)} className="w-full h-full object-cover rounded" alt={`Preview ${idx + 1}`} />
                     ))}
                     {productImages.length > 3 && <div className="flex items-center justify-center bg-black/50 text-white font-bold rounded">+{productImages.length - 3}</div>}
                   </div>
@@ -914,7 +912,7 @@ export default function App() {
                 <div className="flex justify-center mb-2">
                   <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
                     <input type="file" onChange={e => setEditPic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-                    {editPic ? <img src={URL.createObjectURL(editPic)} className="w-full h-full object-cover" /> : <Camera className="text-gray-500 group-hover:text-white" />}
+                    {editPic ? <img src={URL.createObjectURL(editPic)} className="w-full h-full object-cover" alt="Profile Preview" /> : <Camera className="text-gray-500 group-hover:text-white" />}
                   </div>
                 </div>
                 <input className={inputClass} placeholder="Username" value={editName} onChange={e => setEditName(e.target.value)} />
@@ -935,7 +933,7 @@ export default function App() {
                   </button>
                 </div>
                 <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center border-4 border-[#1a1c22] shadow-xl mb-4 overflow-hidden">
-                  {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <span className="text-3xl font-bold">{user.email[0].toUpperCase()}</span>}
+                  {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" alt="User Profile" /> : <span className="text-3xl font-bold">{user.email[0].toUpperCase()}</span>}
                 </div>
                 <h2 className="text-2xl font-bold">{user.displayName}</h2>
                 <p className="text-gray-400 text-sm mb-4">{user.email}</p>
@@ -946,7 +944,7 @@ export default function App() {
                   {listings.filter(l => l.seller === user.email).map(item => (
                     <div key={item.id} className="bg-[#15161a] p-3 rounded-xl border border-white/5 flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <img src={item.image} className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={item.image} className="w-10 h-10 rounded-lg object-cover" alt={item.name} />
                         <div><span className="font-bold text-sm block">{item.name}</span><span className={`text-[10px] px-1.5 py-0.5 rounded ${item.status === 'SOLD' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>{item.status}</span></div>
                       </div>
                       <div className="flex gap-2">
@@ -973,6 +971,7 @@ export default function App() {
                 <img
                   src={activeProduct.selectedImage || activeProduct.image}
                   className="w-full h-full object-contain"
+                  alt={activeProduct.name}
                 />
                 {/* Thumbnails if multiple */}
                 {activeProduct.images && activeProduct.images.length > 1 && (
@@ -983,7 +982,7 @@ export default function App() {
                         onClick={() => setActiveProduct({ ...activeProduct, selectedImage: img })}
                         className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${activeProduct.selectedImage === img || (!activeProduct.selectedImage && idx === 0) ? 'border-blue-500 scale-110' : 'border-white/20 opacity-70'}`}
                       >
-                        <img src={img} className="w-full h-full object-cover" />
+                        <img src={img} className="w-full h-full object-cover" alt={`Thumbnail ${idx + 1}`} />
                       </button>
                     ))}
                   </div>
@@ -1033,7 +1032,7 @@ export default function App() {
                   <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                     {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).slice(0, 5).map(rel => (
                       <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
-                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" /></div>
+                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" alt={rel.name} /></div>
                         <div className="p-2">
                           <p className="text-xs font-bold text-white truncate">{rel.name}</p>
                           <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
@@ -1050,7 +1049,7 @@ export default function App() {
                   <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                     {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).slice(0, 5).map(rel => (
                       <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
-                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" /></div>
+                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" alt={rel.name} /></div>
                         <div className="p-2">
                           <p className="text-xs font-bold text-white truncate">{rel.name}</p>
                           <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
