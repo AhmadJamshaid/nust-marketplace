@@ -83,6 +83,7 @@ export default function App() {
   const [isMarketRun, setIsMarketRun] = useState(false);
   const [isRequestUrgent, setIsRequestUrgent] = useState(false);
   // EXPIRY STATES
+  const [isAutoDeleteEnabled, setIsAutoDeleteEnabled] = useState(false); // Toggle: DEFAULT OFF
   const [expiryMode, setExpiryMode] = useState('duration'); // 'duration' or 'date'
   const [expiryVal, setExpiryVal] = useState(24);
   const [expiryUnit, setExpiryUnit] = useState('hours');
@@ -311,19 +312,21 @@ export default function App() {
     setIsPostingReq(true);
     try {
       let expiresAt = null;
-      if (expiryMode === 'duration') {
-        // Calculate FUTURE date based on Duration
-        const unitMultipliers = {
-          'hours': 60 * 60 * 1000,
-          'days': 24 * 60 * 60 * 1000,
-          'weeks': 7 * 24 * 60 * 60 * 1000
-        };
-        expiresAt = new Date(Date.now() + (Number(expiryVal) * unitMultipliers[expiryUnit]));
-      } else if (expiryMode === 'date' && expiryDate) {
-        expiresAt = new Date(expiryDate);
-      } else {
-        // Fallback default 24h if something is weird
-        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      if (isAutoDeleteEnabled) {
+        if (expiryMode === 'duration') {
+          // Calculate FUTURE date based on Duration
+          const unitMultipliers = {
+            'hours': 60 * 60 * 1000,
+            'days': 24 * 60 * 60 * 1000,
+            'weeks': 7 * 24 * 60 * 60 * 1000
+          };
+          expiresAt = new Date(Date.now() + (Number(expiryVal) * unitMultipliers[expiryUnit]));
+        } else if (expiryMode === 'date' && expiryDate) {
+          expiresAt = new Date(expiryDate);
+        } else {
+          // Fallback default 24h if something is weird
+          expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        }
       }
 
       await createRequest({
@@ -333,7 +336,7 @@ export default function App() {
       });
       // Reset Form
       setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
-      setExpiryVal(24); setExpiryUnit('hours'); setExpiryDate('');
+      setExpiryVal(24); setExpiryUnit('hours'); setExpiryDate(''); setIsAutoDeleteEnabled(false);
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); }
   };
@@ -808,26 +811,39 @@ export default function App() {
                   <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`} title="Offer a run">I'M GOING TO MARKET</button>
                 </div>
 
-                <div className="flex flex-col gap-2 bg-[#15161a] p-3 rounded-xl border border-white/5">
+                <div className="flex flex-col gap-2 bg-[#15161a] p-3 rounded-xl border border-white/5 transition-all">
                   <div className="flex justify-between items-center mb-1">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase">Auto-Delete After</p>
-                    <div className="flex gap-1 bg-black/40 rounded-lg p-0.5">
-                      <button type="button" onClick={() => setExpiryMode('duration')} className={`px-2 py-0.5 text-[10px] font-bold rounded ${expiryMode === 'duration' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>Duration</button>
-                      <button type="button" onClick={() => setExpiryMode('date')} className={`px-2 py-0.5 text-[10px] font-bold rounded ${expiryMode === 'date' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>Specific Date</button>
+                    <div className="flex items-center gap-3">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase">Auto-Delete</p>
+                      {/* TOGGLE SWITCH */}
+                      <button type="button" onClick={() => setIsAutoDeleteEnabled(!isAutoDeleteEnabled)} className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-300 relative ${isAutoDeleteEnabled ? 'bg-green-500' : 'bg-gray-600'}`}>
+                        <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ${isAutoDeleteEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </button>
                     </div>
+
+                    {isAutoDeleteEnabled && (
+                      <div className="flex gap-1 bg-black/40 rounded-lg p-0.5 animate-fade-in">
+                        <button type="button" onClick={() => setExpiryMode('duration')} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${expiryMode === 'duration' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Duration</button>
+                        <button type="button" onClick={() => setExpiryMode('date')} className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${expiryMode === 'date' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Specific Date</button>
+                      </div>
+                    )}
                   </div>
 
-                  {expiryMode === 'duration' ? (
-                    <div className="flex gap-2">
-                      <input type="number" value={expiryVal} onChange={e => setExpiryVal(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded w-16 border border-white/10" placeholder="Val" />
-                      <select value={expiryUnit} onChange={e => setExpiryUnit(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded flex-1 border border-white/10">
-                        <option value="hours">Hours</option>
-                        <option value="days">Days</option>
-                        <option value="weeks">Weeks</option>
-                      </select>
+                  {isAutoDeleteEnabled && (
+                    <div className="animate-fade-in">
+                      {expiryMode === 'duration' ? (
+                        <div className="flex gap-2">
+                          <input type="number" value={expiryVal} onChange={e => setExpiryVal(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded w-16 border border-white/10" placeholder="Val" />
+                          <select value={expiryUnit} onChange={e => setExpiryUnit(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded flex-1 border border-white/10">
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                            <option value="weeks">Weeks</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <input type="datetime-local" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded w-full border border-white/10" />
+                      )}
                     </div>
-                  ) : (
-                    <input type="datetime-local" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded w-full border border-white/10" />
                   )}
                 </div>
 
