@@ -3,7 +3,7 @@ import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
   MessageCircle, X, Mail, Star, Camera, Eye, EyeOff,
   Search, Sliders, MapPin, AlertTriangle, ChevronRight, Check,
-  Zap, Clock, Truck, Tag, ShieldCheck, Phone, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle
+  Zap, Clock, Truck, Tag, ShieldCheck, Phone, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
 } from 'lucide-react';
 import {
   authStateListener, logoutUser, loginWithUsername, signUpUser,
@@ -156,30 +156,37 @@ export default function App() {
   useEffect(() => {
     if (user) {
       const unsubscribe = listenToAllMessages((msgs) => {
-        // Filter messages based on user's relationship to listings and requests
-        const myMsgs = msgs.filter(m => {
-          const isSender = m.sender === user.email;
-          const isSeller = listings.find(l => l.id === m.chatId)?.seller === user.email;
-          const isRequester = requests.find(r => r.id === m.chatId)?.user === user.email;
-
-          return isSender || isSeller || isRequester;
-        });
-
-        // Group messages by chat
-        const groups = myMsgs.reduce((acc, m) => {
+        // Step 1: Group messages FIRST by chatId
+        const allGroups = msgs.reduce((acc, m) => {
           if (!acc[m.chatId]) acc[m.chatId] = [];
           acc[m.chatId].push(m);
           return acc;
         }, {});
 
-        setInboxGroups(groups);
+        // Step 2: Filter GROUPS based on relevance
+        const relevantGroups = {};
+        Object.keys(allGroups).forEach(chatId => {
+          const groupMsgs = allGroups[chatId];
+          const isSeller = listings.find(l => l.id === chatId)?.seller === user.email;
+          const isRequester = requests.find(r => r.id === chatId)?.user === user.email;
+          // IMPORTANT FIX: Also include if I have sent ANY message in this chat (Participant)
+          // This allows "Buyers" (who are not sellers/requesters) to see the chat and replies
+          const hasParticipated = groupMsgs.some(m => m.sender === user.email);
 
-        // Calculate unread messages counts per chat
+          if (isSeller || isRequester || hasParticipated) {
+            relevantGroups[chatId] = groupMsgs;
+          }
+        });
+
+        // Step 3: Set State
+        setInboxGroups(relevantGroups);
+
+        // Step 4: Calculate unread counts on RELEVANT chats
         const unreadCounts = {};
         let totalUnread = 0;
 
-        Object.keys(groups).forEach(chatId => {
-          const chatMsgs = groups[chatId];
+        Object.keys(relevantGroups).forEach(chatId => {
+          const chatMsgs = relevantGroups[chatId];
           // CRITICAL FIX: Only count unread messages sent by OTHERS (not self), Case-Insensitive
           const unreadCount = chatMsgs.filter(m => !m.read && m.sender.toLowerCase() !== user.email.toLowerCase()).length;
           if (unreadCount > 0) {
@@ -1083,7 +1090,13 @@ export default function App() {
                 <div key={m.id} className={`flex ${m.sender === user.email ? 'justify-end' : 'justify-start'}`}>
                   <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender === user.email ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
                     {m.text}
-                    <div className="text-[9px] opacity-50 text-right mt-1">{formatTime(m.createdAt)}</div>
+                    <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
+                      {formatTime(m.createdAt)}
+                      {/* Blue Ticks for Sent Messages */}
+                      {m.sender === user.email && (
+                        <CheckCheck size={14} className={m.read ? "text-blue-300 font-bold" : "text-gray-400"} />
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
