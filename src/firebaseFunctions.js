@@ -82,6 +82,7 @@ export const listenToListings = (callback) => {
 };
 
 export const createListing = (data) => addDoc(collection(db, 'listings'), { ...data, status: 'ACTIVE', createdAt: serverTimestamp() });
+export const updateListing = async (listingId, data) => await updateDoc(doc(db, 'listings', listingId), data);
 export const markListingSold = async (listingId) => await updateDoc(doc(db, 'listings', listingId), { status: 'SOLD' });
 export const deleteListing = async (listingId) => await deleteDoc(doc(db, 'listings', listingId));
 export const reportListing = async (listingId, reason) => await updateDoc(doc(db, 'listings', listingId), { reports: increment(1) });
@@ -98,6 +99,7 @@ export const uploadImageToCloudinary = async (file) => {
 
 // --- REQUESTS ---
 export const createRequest = (data) => addDoc(collection(db, 'requests'), { ...data, createdAt: serverTimestamp() });
+export const updateRequest = async (requestId, data) => await updateDoc(doc(db, 'requests', requestId), { ...data, editedAt: serverTimestamp() });
 export const deleteRequest = async (requestId) => await deleteDoc(doc(db, 'requests', requestId));
 export const getRequests = async () => {
   const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'), limit(20));

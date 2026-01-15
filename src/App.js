@@ -11,7 +11,7 @@ import {
   resendVerificationLink, sendMessage, listenToMessages,
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
-  listenToListings, listenToRequests, markChatRead
+  listenToListings, listenToRequests, markChatRead, updateRequest, updateListing
 } from './firebaseFunctions';
 
 export default function App() {
@@ -70,15 +70,22 @@ export default function App() {
   const [listingType, setListingType] = useState('SELL');
   const [condition, setCondition] = useState('Used');
   const [category, setCategory] = useState('Electronics');
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFile, setImageFile] = useState(null); // Keep for backward compat or single view
+  const [productImages, setProductImages] = useState([]); // New: for multiple images
   const [isUploading, setIsUploading] = useState(false);
+  const [activeProduct, setActiveProduct] = useState(null); // New: for detailed product view
 
   // Request Input (Community Board)
   const [reqTitle, setReqTitle] = useState('');
   const [reqDesc, setReqDesc] = useState('');
   const [isMarketRun, setIsMarketRun] = useState(false);
   const [isRequestUrgent, setIsRequestUrgent] = useState(false);
+  const [reqExpiry, setReqExpiry] = useState(0); // 0 = No expiry, 1 = 1 hour, 24 = 24 hours
   const [isPostingReq, setIsPostingReq] = useState(false);
+
+  // Edit Request State
+  const [editingReq, setEditingReq] = useState(null);
+  const [editReqText, setEditReqText] = useState('');
 
   // Modals
   const [deleteModalItem, setDeleteModalItem] = useState(null);
@@ -112,12 +119,13 @@ export default function App() {
 
   // --- REAL-TIME REQUESTS LISTENER ---
   useEffect(() => {
+    // Re-subscribe when user changes to ensure we have latest permissions/data
     const unsubscribe = listenToRequests((reqs) => {
       setRequests(reqs);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user]); // Added user dependency to fix "requires refresh" issue
 
   // --- CHAT REAL-TIME LISTENER WITH AUTO-SCROLL ---
   useEffect(() => {
@@ -229,17 +237,32 @@ export default function App() {
     e.preventDefault();
     setIsUploading(true);
     try {
-      let imageUrl = "https://via.placeholder.com/400?text=No+Image";
-      if (imageFile) imageUrl = await uploadImageToCloudinary(imageFile);
+      let imageUrls = [];
+      let mainImage = "https://via.placeholder.com/400?text=No+Image";
+
+      // Upload multiple images
+      if (productImages.length > 0) {
+        // Upload all images in parallel
+        const uploadPromises = Array.from(productImages).map(file => uploadImageToCloudinary(file));
+        imageUrls = await Promise.all(uploadPromises);
+        mainImage = imageUrls[0];
+      } else if (imageFile) {
+        // Fallback for single image state if used
+        mainImage = await uploadImageToCloudinary(imageFile);
+        imageUrls = [mainImage];
+      }
+
       await createListing({
         name: itemName, price: Number(itemPrice), description: itemDesc,
         type: listingType, condition: condition, category: category,
-        image: imageUrl, seller: user.email, sellerName: user.displayName || "NUST Student",
+        image: mainImage, // Main image for card view backward compatibility
+        images: imageUrls, // Array for valid multiple images
+        seller: user.email, sellerName: user.displayName || "NUST Student",
         sellerDept: department, sellerReputation: 5.0
       });
       // No need to manually refresh - real-time listener will update
       setView('market');
-      setItemName(''); setItemPrice(''); setImageFile(null); setItemDesc('');
+      setItemName(''); setItemPrice(''); setImageFile(null); setProductImages([]); setItemDesc('');
     } catch (err) { alert(err.message); }
     finally { setIsUploading(false); }
   };
@@ -259,14 +282,36 @@ export default function App() {
     if (!reqTitle.trim() || isPostingReq) return;
     setIsPostingReq(true);
     try {
+      let expiresAt = null;
+      if (reqExpiry > 0) {
+        expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + Number(reqExpiry));
+      }
+
       await createRequest({
         title: reqTitle, text: reqDesc, user: user.email,
-        userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent
+        userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent,
+        expiresAt: expiresAt ? expiresAt : null // Store as timestamp
       });
       // No need to manually refresh - real-time listener will update
-      setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
+      setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false); setReqExpiry(0);
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); }
+  };
+
+  const handleEditRequest = async (e) => {
+    e.preventDefault();
+    if (!editingReq || !editReqText.trim()) return;
+    try {
+      await updateRequest(editingReq.id, { text: editReqText });
+      setEditingReq(null);
+      setEditReqText('');
+    } catch (err) { alert(err.message); }
+  };
+
+  const startEditRequest = (req) => {
+    setEditingReq(req);
+    setEditReqText(req.text);
   };
 
   const handleDeleteRequest = async (id) => {
@@ -328,9 +373,7 @@ export default function App() {
     setIsSendingMsg(true);
     try {
       await sendMessage(activeChat.id, user.email, newMsg);
-      if (chatMessages.length === 0) {
-        await sendMessage(activeChat.id, "System", "🔔 Notification sent to WhatsApp!");
-      }
+      // REMOVED: Automatic "Notification sent to WhatsApp" message
       setNewMsg('');
     } catch (err) {
       console.error("Send message error:", err);
@@ -342,7 +385,10 @@ export default function App() {
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // User requested "Time when he uploaded it". 
+    // Format: "Jan 15, 10:30 PM"
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ", " +
+      date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const LoadingSkeleton = () => (
@@ -519,10 +565,11 @@ export default function App() {
             {isLoading ? <LoadingSkeleton /> : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {filteredListings.map(item => (
-                  <div key={item.id} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300 relative">
+                  <div key={item.id} onClick={() => setActiveProduct(item)} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300 relative cursor-pointer">
                     {item.status === 'SOLD' && (
-                      <div className="absolute inset-0 bg-black/80 z-20 flex items-center justify-center">
-                        <div className="bg-red-500 text-white font-bold px-4 py-2 rounded-xl transform -rotate-12 border-2 border-white">SOLD</div>
+                      <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                        <div className="bg-black/40 backdrop-blur-[2px] absolute inset-0"></div>
+                        <div className="bg-red-500/80 text-white font-bold px-4 py-1 rounded-lg transform -rotate-12 border border-white/20 shadow-xl text-sm backdrop-blur-md">SOLD</div>
                       </div>
                     )}
                     <div className="relative h-48">
@@ -550,11 +597,13 @@ export default function App() {
                     <div className="p-3">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md">{item.category}</span>
-                        <button onClick={() => { if (window.confirm('Report this item?')) reportListing(item.id, 'User Report') }} className="text-gray-600 hover:text-red-500" title="Report Item"><Flag size={12} /></button>
+                        <div onClick={e => e.stopPropagation()}>
+                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Report this item?')) reportListing(item.id, 'User Report') }} className="text-gray-600 hover:text-red-500" title="Report Item"><Flag size={12} /></button>
+                        </div>
                       </div>
                       <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
                       {item.seller !== user.email && item.status !== 'SOLD' && (
-                        <button onClick={() => handleListingClick(item)} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
+                        <button onClick={(e) => { e.stopPropagation(); handleListingClick(item); }} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
                           <MessageCircle size={16} /> Chat Now
                         </button>
                       )}
@@ -577,8 +626,26 @@ export default function App() {
 
               {/* Image Upload */}
               <div className="relative w-full h-48 rounded-2xl border-2 border-dashed border-white/10 hover:border-blue-500/50 bg-[#15161a] flex flex-col items-center justify-center cursor-pointer transition-colors group overflow-hidden shadow-inner">
-                <input type="file" onChange={e => setImageFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                {imageFile ? <img src={URL.createObjectURL(imageFile)} className="w-full h-full object-cover" /> : <div className="text-center group-hover:scale-105 transition-transform"><Camera size={32} className="text-gray-500 mx-auto mb-2" /><p className="text-xs text-gray-400">Tap to upload photo</p></div>}
+                <input type="file" multiple onChange={e => {
+                  const files = Array.from(e.target.files);
+                  setProductImages(files);
+                  // Preview first image for feedback
+                  if (files.length > 0) setImageFile(files[0]);
+                }} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+
+                {productImages.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2 p-2 w-full h-full overflow-hidden">
+                    {productImages.slice(0, 3).map((file, idx) => (
+                      <img key={idx} src={URL.createObjectURL(file)} className="w-full h-full object-cover rounded" />
+                    ))}
+                    {productImages.length > 3 && <div className="flex items-center justify-center bg-black/50 text-white font-bold rounded">+{productImages.length - 3}</div>}
+                  </div>
+                ) : (
+                  <div className="text-center group-hover:scale-105 transition-transform">
+                    <Camera size={32} className="text-gray-500 mx-auto mb-2" />
+                    <p className="text-xs text-gray-400">Tap to upload photos (Max 5)</p>
+                  </div>
+                )}
               </div>
 
               {/* Colorful Toggles */}
@@ -632,7 +699,18 @@ export default function App() {
                   <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`} title="Offer a run">I'M GOING TO MARKET</button>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center gap-2">
+                  <select
+                    value={reqExpiry}
+                    onChange={e => setReqExpiry(e.target.value)}
+                    className="bg-[#15161a] text-gray-400 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-white/5 outline-none"
+                    title="Auto-delete after..."
+                  >
+                    <option value="0">Forever</option>
+                    <option value="1">1 Hour</option>
+                    <option value="5">5 Hours</option>
+                    <option value="24">24 Hours</option>
+                  </select>
                   <button type="button" onClick={() => setIsRequestUrgent(!isRequestUrgent)} className={`px-4 py-1.5 rounded-lg border flex items-center gap-1 transition-all ${isRequestUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500 border-white/5'}`} title="Mark as Urgent">
                     <Zap size={14} fill={isRequestUrgent ? "currentColor" : "none"} />
                     <span className="text-[10px] font-bold">URGENT</span>
@@ -660,21 +738,51 @@ export default function App() {
             </div>
             {isLoading ? <LoadingSkeleton /> : (
               <div className="space-y-3">
-                {requests.map(req => (
+                {requests.filter(req => {
+                  if (!req.expiresAt) return true;
+                  const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
+                  return expiry > new Date(); // Filter out expired
+                }).map(req => (
                   <div key={req.id} onClick={() => handleRequestClick(req)} className={`p-4 rounded-xl border flex items-start justify-between gap-4 cursor-pointer hover:bg-white/5 transition-colors ${req.isMarketRun ? 'bg-green-900/10 border-green-500/30' : 'bg-[#1a1c22] border-white/5'}`} title="Click to Chat">
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-4 flex-1">
                       <div className={`p-3 rounded-full ${req.isMarketRun ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>{req.isMarketRun ? <Truck size={20} /> : <AlertTriangle size={20} />}</div>
-                      <div>
+                      <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-bold text-white">{req.title}</h4>
                           {req.isUrgent && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Zap size={10} fill="white" /> URGENT</span>}
+                          {req.editedAt && <span className="text-[10px] text-gray-500 italic">(edited {formatTime(req.editedAt)})</span>}
                         </div>
-                        <p className="text-gray-300 text-sm mt-1">{req.text}</p>
-                        <p className="text-xs text-gray-500 mt-2">Posted by {req.userName} • Just now</p>
+
+                        {editingReq && editingReq.id === req.id ? (
+                          <div onClick={e => e.stopPropagation()} className="mt-2">
+                            <textarea
+                              value={editReqText}
+                              onChange={e => setEditReqText(e.target.value)}
+                              className="w-full bg-black/50 text-white rounded p-2 border border-white/20 text-sm"
+                              rows="2"
+                            />
+                            <div className="flex gap-2 mt-2">
+                              <button onClick={handleEditRequest} className="bg-green-600 text-white px-3 py-1 rounded text-xs font-bold">Save</button>
+                              <button onClick={() => setEditingReq(null)} className="bg-gray-600 text-white px-3 py-1 rounded text-xs font-bold">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-300 text-sm mt-1">{req.text}</p>
+                        )}
+
+                        <p className="text-xs text-gray-500 mt-2 flex gap-2 items-center">
+                          <span>Posted by {req.userName}</span>
+                          <span>•</span>
+                          <span>{formatTime(req.createdAt)}</span>
+                          {req.expiresAt && <span className="text-orange-400">• Exp: {formatTime(req.expiresAt)}</span>}
+                        </p>
                       </div>
                     </div>
-                    {req.user === user.email && (
-                      <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 p-2" title="Delete Request"><Trash2 size={16} /></button>
+                    {req.user === user.email && !editingReq && (
+                      <div className="flex flex-col gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); startEditRequest(req); }} className="text-gray-500 hover:text-blue-500 p-1" title="Edit Request"><Edit2 size={16} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 p-1" title="Delete Request"><Trash2 size={16} /></button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -788,6 +896,106 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {activeProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md overflow-y-auto">
+          <div className="glass-card w-full max-w-2xl rounded-3xl overflow-hidden relative animate-slide-up my-auto max-h-[95vh] flex flex-col">
+            <button onClick={() => setActiveProduct(null)} className="absolute top-4 right-4 z-30 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors"><X size={20} /></button>
+
+            <div className="flex-1 overflow-y-auto scrollbar-hide">
+              {/* Image Gallery */}
+              <div className="h-72 sm:h-96 relative bg-black">
+                <img
+                  src={activeProduct.selectedImage || activeProduct.image}
+                  className="w-full h-full object-contain"
+                />
+                {/* Thumbnails if multiple */}
+                {activeProduct.images && activeProduct.images.length > 1 && (
+                  <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 p-2">
+                    {activeProduct.images.map((img, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setActiveProduct({ ...activeProduct, selectedImage: img })}
+                        className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${activeProduct.selectedImage === img || (!activeProduct.selectedImage && idx === 0) ? 'border-blue-500 scale-110' : 'border-white/20 opacity-70'}`}
+                      >
+                        <img src={img} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Seller Info Section (Profile View Clone) */}
+                <div className="flex items-center gap-4 p-4 bg-[#1a1c22] rounded-2xl border border-white/5">
+                  <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xl text-white">
+                    {activeProduct.sellerName?.[0]}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-white">{activeProduct.sellerName}</h3>
+                    <p className="text-xs text-gray-400">{activeProduct.sellerDept || "NUSTian"} • Rep: {activeProduct.sellerReputation || 5.0} ⭐</p>
+                  </div>
+                  {activeProduct.seller !== user.email && (
+                    <button onClick={() => { setActiveProduct(null); handleListingClick(activeProduct); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
+                      <MessageCircle size={16} /> Chat
+                    </button>
+                  )}
+                </div>
+
+                {/* Product Details */}
+                <div>
+                  <div className="flex justify-between items-start">
+                    <h2 className="text-3xl font-bold text-white mb-2">{activeProduct.name}</h2>
+                    <span className="text-2xl font-bold text-green-400">Rs. {activeProduct.price}</span>
+                  </div>
+                  <div className="flex gap-2 mb-4">
+                    <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.condition}</span>
+                    <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.category}</span>
+                    <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{formatTime(activeProduct.createdAt)}</span>
+                  </div>
+                  <p className="text-gray-300 leading-relaxed text-sm">{activeProduct.description}</p>
+                </div>
+
+                <div className="border-t border-white/10 my-4" />
+
+                {/* Related Products */}
+                <div>
+                  <h4 className="font-bold text-gray-400 mb-3 text-sm uppercase">Related Items</h4>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).slice(0, 5).map(rel => (
+                      <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
+                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" /></div>
+                        <div className="p-2">
+                          <p className="text-xs font-bold text-white truncate">{rel.name}</p>
+                          <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).length === 0 && <p className="text-xs text-gray-600">No related items.</p>}
+                  </div>
+                </div>
+
+                {/* Seller's Other Products */}
+                <div>
+                  <h4 className="font-bold text-gray-400 mb-3 text-sm uppercase">More from {activeProduct.sellerName}</h4>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).slice(0, 5).map(rel => (
+                      <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
+                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" /></div>
+                        <div className="p-2">
+                          <p className="text-xs font-bold text-white truncate">{rel.name}</p>
+                          <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).length === 0 && <p className="text-xs text-gray-600">No other items.</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeChat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
