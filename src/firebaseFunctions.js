@@ -204,11 +204,11 @@ export const rateUser = async (targetUserEmail, ratingValue) => {
 };
 
 export const markChatRead = async (chatId, userEmail) => {
-  // Query messages in this chat that are NOT sent by the current user and are unread
+  // Query ALL messages in this chat (safer to avoid compound index issues with 'read' field)
+  // We will filter client-side.
   const q = query(
     collection(db, 'messages'),
-    where('chatId', '==', chatId),
-    where('read', '==', false)
+    where('chatId', '==', chatId)
   );
 
   const snap = await getDocs(q);
@@ -217,12 +217,10 @@ export const markChatRead = async (chatId, userEmail) => {
   let updateCount = 0;
   snap.docs.forEach((doc) => {
     const data = doc.data();
-    // Double check sender is not self (though query should handle most filtering, sender filter might need composite index if added to query)
-    // To avoid complex index requirements, we'll filter sender in client or just rely on logic that we only call this for incoming messages.
-    // Ideally: where('sender', '!=', userEmail)
-    // But '!=' queries often need indices with other clauses. 
-    // Let's do it safely:
-    if (data.sender !== userEmail) {
+    // Check if unread AND sender is NOT me (Case-Insensitive for safety)
+    const isFromOther = data.sender && userEmail && data.sender.toLowerCase() !== userEmail.toLowerCase();
+
+    if (!data.read && isFromOther) {
       batch.update(doc.ref, { read: true });
       updateCount++;
     }

@@ -135,8 +135,8 @@ export default function App() {
         setChatMessages(msgs);
 
         // Mark as read when messages load/update and we are in the chat
-        // Check if there are unread messages from others
-        const hasUnread = msgs.some(m => !m.read && m.sender !== user.email);
+        // Check if there are unread messages from others (Case-Insenstive)
+        const hasUnread = msgs.some(m => !m.read && m.sender.toLowerCase() !== user.email.toLowerCase());
         if (hasUnread) {
           markChatRead(activeChat.id, user.email);
         }
@@ -180,8 +180,8 @@ export default function App() {
 
         Object.keys(groups).forEach(chatId => {
           const chatMsgs = groups[chatId];
-          // CRITICAL FIX: Only count unread messages sent by OTHERS (not self)
-          const unreadCount = chatMsgs.filter(m => !m.read && m.sender !== user.email).length;
+          // CRITICAL FIX: Only count unread messages sent by OTHERS (not self), Case-Insensitive
+          const unreadCount = chatMsgs.filter(m => !m.read && m.sender.toLowerCase() !== user.email.toLowerCase()).length;
           if (unreadCount > 0) {
             unreadCounts[chatId] = unreadCount;
             totalUnread += 1;
