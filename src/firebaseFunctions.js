@@ -1,7 +1,7 @@
 import { auth, db, CLOUDINARY_CLOUD_NAME, CLOUDINARY_PRESET } from './firebase';
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  onAuthStateChanged, sendEmailVerification, updateProfile, updatePassword
+  onAuthStateChanged, sendEmailVerification, updateProfile, updatePassword, sendPasswordResetEmail
 } from 'firebase/auth';
 import {
   collection, addDoc, getDocs, query, where, onSnapshot,
@@ -55,6 +55,7 @@ export const updateUserProfile = async (uid, data, newPassword) => {
 
 export const logoutUser = () => signOut(auth);
 export const resendVerificationLink = () => auth.currentUser && sendEmailVerification(auth.currentUser);
+export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
 
 export const getPublicProfile = async (email) => {
   const q = query(collection(db, 'users'), where('email', '==', email));

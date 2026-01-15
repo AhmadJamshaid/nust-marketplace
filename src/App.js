@@ -11,7 +11,7 @@ import {
   resendVerificationLink, sendMessage, listenToMessages,
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary, rateUser,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
-  listenToListings, listenToRequests, markChatRead, updateRequest, updateListing
+  listenToListings, listenToRequests, markChatRead, updateRequest, updateListing, resetPassword
 } from './firebaseFunctions';
 
 export default function App() {
@@ -28,6 +28,7 @@ export default function App() {
 
   // --- ADVANCED FILTERS ---
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState([]); // New Suggestion State
   const [showFilters, setShowFilters] = useState(false);
   const [activeCondition, setActiveCondition] = useState('All');
   const [activeType, setActiveType] = useState('All');
@@ -179,12 +180,11 @@ export default function App() {
 
         Object.keys(groups).forEach(chatId => {
           const chatMsgs = groups[chatId];
+          // CRITICAL FIX: Only count unread messages sent by OTHERS (not self)
           const unreadCount = chatMsgs.filter(m => !m.read && m.sender !== user.email).length;
           if (unreadCount > 0) {
             unreadCounts[chatId] = unreadCount;
-            totalUnread += 1; // Increment total unread chats count (or messages? usually apps show distinct chats or total messages. Let's show total unread chats or just a dot)
-            // For the badge on the tab, let's just use boolean or count. 
-            // The request asked for "red bubble with number of unseen".
+            totalUnread += 1;
           }
         });
 
@@ -223,6 +223,13 @@ export default function App() {
         await loginWithUsername(username, password);
       } else {
         if (!acceptedTerms) throw new Error("Please accept the Terms of Service.");
+
+        // Strong Password Check
+        const passwordRegex = /^(?=.*[A-Z])(?=.*\d).+$/;
+        if (!passwordRegex.test(password)) {
+          throw new Error("Password must contain at least 1 Capital Letter and 1 Number.");
+        }
+
         let photoURL = `https://api.dicebear.com/7.x/initials/svg?seed=${username}&backgroundColor=003366`;
         if (profilePic) photoURL = await uploadImageToCloudinary(profilePic);
         await signUpUser(email, password, { username, name, whatsapp: phone, department, photoURL });
@@ -231,6 +238,18 @@ export default function App() {
       }
     } catch (err) { alert(err.message); }
     finally { setAuthLoading(false); }
+  };
+
+  const handleForgotPassword = async () => {
+    const resetEmail = prompt("Enter your email to reset password:");
+    if (resetEmail) {
+      try {
+        await resetPassword(resetEmail);
+        alert("Password reset link sent to " + resetEmail);
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    }
   };
 
   const handlePostItem = async (e) => {
@@ -364,7 +383,8 @@ export default function App() {
 
   const handleListingClick = (item) => {
     setActiveChat(item);
-    // Mark as read is handled in useEffect of activeChat
+    // Mark as read immediately when opening
+    markChatRead(item.id, user.email);
   };
 
   const handleSendChat = async (e) => {
@@ -486,6 +506,11 @@ export default function App() {
                 <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-gray-400 hover:text-white transition-colors">
                   {isLogin ? "New here? Sign Up" : "Have an account? Login"}
                 </button>
+                {isLogin && (
+                  <div className="mt-2">
+                    <button type="button" onClick={handleForgotPassword} className="text-xs text-blue-400 hover:text-white transition-colors">Forgot Password?</button>
+                  </div>
+                )}
               </div>
             </form>
           )}
@@ -518,7 +543,40 @@ export default function App() {
             <div className="flex gap-3">
               <div className="relative group flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
-                <input type="text" placeholder="Search listings..." className={`${inputClass} pl-11`} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                <input
+                  type="text"
+                  placeholder="Search listings..."
+                  className={`${inputClass} pl-11`}
+                  value={searchQuery}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSearchQuery(val);
+                    // Filter Suggestions
+                    if (val.trim()) {
+                      const suggestions = listings
+                        .map(l => l.name)
+                        .filter(n => n.toLowerCase().includes(val.toLowerCase()))
+                        .slice(0, 5); // Limit to 5
+                      setSearchSuggestions([...new Set(suggestions)]); // Unique
+                    } else {
+                      setSearchSuggestions([]);
+                    }
+                  }}
+                />
+                {/* Search Suggestions Dropdown */}
+                {searchSuggestions.length > 0 && searchQuery && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1c22] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                    {searchSuggestions.map((s, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => { setSearchQuery(s); setSearchSuggestions([]); }}
+                        className="px-4 py-3 hover:bg-white/5 cursor-pointer text-sm text-gray-300 hover:text-white flex items-center gap-2"
+                      >
+                        <Search size={14} className="opacity-50" /> {s}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button onClick={() => setShowFilters(!showFilters)} className={`px-4 rounded-xl border flex items-center justify-center gap-2 transition-all ${showFilters ? 'bg-white text-black border-white' : 'bg-[#15161a] text-gray-400 border-white/10 hover:border-white/30'}`} title="Filter Options">
                 <Sliders size={18} />
@@ -573,7 +631,7 @@ export default function App() {
                       </div>
                     )}
                     <div className="relative h-48">
-                      <img src={item.image} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
+                      <img src={item.image} className="w-full h-full object-cover transition-transform duration-500" alt={item.name} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
                       {/* FIXED TITLE WITH IMPROVED CONTRAST */}
                       <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
@@ -946,7 +1004,11 @@ export default function App() {
                 <div>
                   <div className="flex justify-between items-start">
                     <h2 className="text-3xl font-bold text-white mb-2">{activeProduct.name}</h2>
-                    <span className="text-2xl font-bold text-green-400">Rs. {activeProduct.price}</span>
+                    {activeProduct.status === 'SOLD' ? (
+                      <span className="text-2xl font-bold text-red-500">SOLD</span>
+                    ) : (
+                      <span className="text-2xl font-bold text-green-400">Rs. {activeProduct.price}</span>
+                    )}
                   </div>
                   <div className="flex gap-2 mb-4">
                     <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.condition}</span>
@@ -1000,8 +1062,14 @@ export default function App() {
       {activeChat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
-            <div className="p-4 bg-[#15161a] flex justify-between items-center border-b border-white/5">
-              <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{(activeChat.name || activeChat.title || "Chat")[0]}</div><h3 className="font-bold text-sm">{activeChat.name || activeChat.title || "Chat"}</h3></div>
+            <div className="p-4 bg-[#1a1c22] flex justify-between items-center border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{activeChat.sellerName?.[0] || "?"}</div>
+                <div>
+                  <h3 className="font-bold text-sm">{activeChat.sellerName || "User"}</h3>
+                  <p className="text-[10px] text-gray-400">({activeChat.name || activeChat.title})</p>
+                </div>
+              </div>
               <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
