@@ -12,7 +12,7 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  verifyResetCode, confirmReset, updateListing
+  confirmReset, updateListing
 } from './firebaseFunctions';
 
 // --- REUSABLE PASSWORD COMPONENT ---
