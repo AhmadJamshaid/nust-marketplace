@@ -150,7 +150,7 @@ export default function App() {
     } else {
       setChatMessages([]);
     }
-  }, [activeChat]);
+  }, [activeChat, user]);
 
   // --- INBOX LISTENER WITH UNREAD DETECTION ---
   useEffect(() => {
@@ -1092,9 +1092,9 @@ export default function App() {
                     {m.text}
                     <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
                       {formatTime(m.createdAt)}
-                      {/* Blue Ticks for Sent Messages */}
+                      {/* Green Ticks for Sent Messages */}
                       {m.sender === user.email && (
-                        <CheckCheck size={14} className={m.read ? "text-blue-300 font-bold" : "text-gray-400"} />
+                        <CheckCheck size={14} className={m.read ? "text-green-500 font-bold" : "text-gray-500"} />
                       )}
                     </div>
                   </div>
