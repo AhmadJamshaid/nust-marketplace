@@ -79,11 +79,14 @@ export default function App() {
   // Request Input (Community Board)
   const [reqTitle, setReqTitle] = useState('');
   const [reqDesc, setReqDesc] = useState('');
+  const [isPostingReq, setIsPostingReq] = useState(false);
   const [isMarketRun, setIsMarketRun] = useState(false);
   const [isRequestUrgent, setIsRequestUrgent] = useState(false);
-  const [reqExpiry, setReqExpiry] = useState(0); // 0 = No expiry, 1 = 1 hour, 24 = 24 hours
-  const [isPostingReq, setIsPostingReq] = useState(false);
-
+  // EXPIRY STATES
+  const [expiryMode, setExpiryMode] = useState('duration'); // 'duration' or 'date'
+  const [expiryVal, setExpiryVal] = useState(24);
+  const [expiryUnit, setExpiryUnit] = useState('hours');
+  const [expiryDate, setExpiryDate] = useState('');
   // Edit Request State
   const [editingReq, setEditingReq] = useState(null);
   const [editReqText, setEditReqText] = useState('');
@@ -229,10 +232,11 @@ export default function App() {
       } else {
         if (!acceptedTerms) throw new Error("Please accept the Terms of Service.");
 
-        // Strong Password Check
-        const passwordRegex = /^(?=.*[A-Z])(?=.*\d).+$/;
+        // Strong Password Check (Backend Double-Check)
+        // RegEx: 8 chars, 1 Upper, 1 Lower, 1 Number, 1 Special
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
         if (!passwordRegex.test(password)) {
-          throw new Error("Password must contain at least 1 Capital Letter and 1 Number.");
+          throw new Error("Password does not meet security requirements.");
         }
 
         let photoURL = `https://api.dicebear.com/7.x/initials/svg?seed=${username}&backgroundColor=003366`;
@@ -307,18 +311,29 @@ export default function App() {
     setIsPostingReq(true);
     try {
       let expiresAt = null;
-      if (reqExpiry > 0) {
-        expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + Number(reqExpiry));
+      if (expiryMode === 'duration') {
+        // Calculate FUTURE date based on Duration
+        const unitMultipliers = {
+          'hours': 60 * 60 * 1000,
+          'days': 24 * 60 * 60 * 1000,
+          'weeks': 7 * 24 * 60 * 60 * 1000
+        };
+        expiresAt = new Date(Date.now() + (Number(expiryVal) * unitMultipliers[expiryUnit]));
+      } else if (expiryMode === 'date' && expiryDate) {
+        expiresAt = new Date(expiryDate);
+      } else {
+        // Fallback default 24h if something is weird
+        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       }
 
       await createRequest({
         title: reqTitle, text: reqDesc, user: user.email,
         userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent,
-        expiresAt: expiresAt ? expiresAt : null // Store as timestamp
+        expiresAt: expiresAt // Store as timestamp object
       });
-      // No need to manually refresh - real-time listener will update
-      setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false); setReqExpiry(0);
+      // Reset Form
+      setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
+      setExpiryVal(24); setExpiryUnit('hours'); setExpiryDate('');
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); }
   };
@@ -478,6 +493,34 @@ export default function App() {
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
+
+                  {/* PASSWORD STRENGTH INDICATOR */}
+                  {password && (
+                    <div className="space-y-2 bg-[#1a1c22] p-3 rounded-lg border border-white/5">
+                      <div className="flex gap-1 h-1 mb-2">
+                        <div className={`flex-1 rounded-full ${password.length >= 8 ? "bg-green-500" : "bg-gray-600"}`}></div>
+                        <div className={`flex-1 rounded-full ${/[A-Z]/.test(password) && /[a-z]/.test(password) ? "bg-green-500" : "bg-gray-600"}`}></div>
+                        <div className={`flex-1 rounded-full ${/\d/.test(password) && /[@$!%*?&]/.test(password) ? "bg-green-500" : "bg-gray-600"}`}></div>
+                      </div>
+                      <ul className="text-[10px] space-y-1 text-gray-400">
+                        <li className={`flex items-center gap-1 ${password.length >= 8 ? "text-green-400" : ""}`}>
+                          {password.length >= 8 ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} At least 8 Characters
+                        </li>
+                        <li className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? "text-green-400" : ""}`}>
+                          {/[A-Z]/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Uppercase Letter (A-Z)
+                        </li>
+                        <li className={`flex items-center gap-1 ${/[a-z]/.test(password) ? "text-green-400" : ""}`}>
+                          {/[a-z]/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Lowercase Letter (a-z)
+                        </li>
+                        <li className={`flex items-center gap-1 ${/\d/.test(password) ? "text-green-400" : ""}`}>
+                          {/\d/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Number (0-9)
+                        </li>
+                        <li className={`flex items-center gap-1 ${/[@$!%*?&]/.test(password) ? "text-green-400" : ""}`}>
+                          {/[@$!%*?&]/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Special Character (!@#$...)
+                        </li>
+                      </ul>
+                    </div>
+                  )}
                   <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10} /> Use a new password, NOT your NUST email password.</p>
                   <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
                   <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required />
@@ -615,7 +658,7 @@ export default function App() {
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase mb-2">Category</p>
                   <div className="flex gap-2 flex-wrap">
-                    {['All', 'Electronics', 'Study Material', 'Others'].map(cat => (
+                    {['All', 'Electronics', 'Study Material', 'Sports', 'Accessories', 'Stationary', 'Others'].map(cat => (
                       <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCategory === cat ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg' : 'bg-[#15161a] text-gray-400'}`}>
                         {cat}
                       </button>
@@ -737,6 +780,9 @@ export default function App() {
                 <select value={category} onChange={e => setCategory(e.target.value)} className={`${inputClass} flex-1`}>
                   <option>Electronics</option>
                   <option>Study Material</option>
+                  <option>Sports</option>
+                  <option>Accessories</option>
+                  <option>Stationary</option>
                   <option>Others</option>
                 </select>
                 <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={`${inputClass} flex-1`} placeholder="Price (PKR)" />
@@ -762,18 +808,30 @@ export default function App() {
                   <button type="button" onClick={() => setIsMarketRun(true)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${isMarketRun ? 'bg-[#57F287] text-black' : 'bg-[#15161a] text-gray-500'}`} title="Offer a run">I'M GOING TO MARKET</button>
                 </div>
 
+                <div className="flex flex-col gap-2 bg-[#15161a] p-3 rounded-xl border border-white/5">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase">Auto-Delete After</p>
+                    <div className="flex gap-1 bg-black/40 rounded-lg p-0.5">
+                      <button type="button" onClick={() => setExpiryMode('duration')} className={`px-2 py-0.5 text-[10px] font-bold rounded ${expiryMode === 'duration' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>Duration</button>
+                      <button type="button" onClick={() => setExpiryMode('date')} className={`px-2 py-0.5 text-[10px] font-bold rounded ${expiryMode === 'date' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>Specific Date</button>
+                    </div>
+                  </div>
+
+                  {expiryMode === 'duration' ? (
+                    <div className="flex gap-2">
+                      <input type="number" value={expiryVal} onChange={e => setExpiryVal(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded w-16 border border-white/10" placeholder="Val" />
+                      <select value={expiryUnit} onChange={e => setExpiryUnit(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded flex-1 border border-white/10">
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                        <option value="weeks">Weeks</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <input type="datetime-local" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="bg-black/50 text-white text-xs p-2 rounded w-full border border-white/10" />
+                  )}
+                </div>
+
                 <div className="flex justify-end items-center gap-2">
-                  <select
-                    value={reqExpiry}
-                    onChange={e => setReqExpiry(e.target.value)}
-                    className="bg-[#15161a] text-gray-400 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-white/5 outline-none"
-                    title="Auto-delete after..."
-                  >
-                    <option value="0">Forever</option>
-                    <option value="1">1 Hour</option>
-                    <option value="5">5 Hours</option>
-                    <option value="24">24 Hours</option>
-                  </select>
                   <button type="button" onClick={() => setIsRequestUrgent(!isRequestUrgent)} className={`px-4 py-1.5 rounded-lg border flex items-center gap-1 transition-all ${isRequestUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500 border-white/5'}`} title="Mark as Urgent">
                     <Zap size={14} fill={isRequestUrgent ? "currentColor" : "none"} />
                     <span className="text-[10px] font-bold">URGENT</span>
