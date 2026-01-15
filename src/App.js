@@ -11,8 +11,50 @@ import {
   resendVerificationLink, sendMessage, listenToMessages,
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
-  listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword
+  listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
+  verifyResetCode, confirmReset, updateListing
 } from './firebaseFunctions';
+
+// --- REUSABLE PASSWORD COMPONENT ---
+const PasswordInput = ({ value, onChange, placeholder = "Password" }) => {
+  const [show, setShow] = useState(false);
+  const requirements = [
+    { regex: /.{8,}/, label: "8+ Chars" },
+    { regex: /[A-Z]/, label: "Upper" },
+    { regex: /[a-z]/, label: "Lower" },
+    { regex: /[0-9]/, label: "Num" },
+    { regex: /[@$!%*?&]/, label: "Special" },
+  ];
+  const isValid = requirements.every(r => r.regex.test(value));
+  const missing = requirements.filter(r => !r.regex.test(value)).map(r => r.label).join(", ");
+
+  return (
+    <div className="w-full">
+      {value && (
+        <div className="mb-1 h-5 flex justify-end sm:justify-start">
+          {isValid ? (
+            <div className="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 animate-slide-up"><CheckCircle size={10} strokeWidth={3} /> Strong Password</div>
+          ) : (
+            <div className="text-red-400 text-[10px] font-bold animate-pulse">Missing: {missing}</div>
+          )}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          type={show ? "text" : "password"}
+          className="w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base pr-10"
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          required
+        />
+        <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+          {show ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -56,6 +98,10 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  // Rental Management State
+  const [rentalModalItem, setRentalModalItem] = useState(null);
+  const [newRentalDate, setNewRentalDate] = useState('');
+
   // Profile Edit Inputs
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
@@ -69,6 +115,7 @@ export default function App() {
   const [itemPrice, setItemPrice] = useState('');
   const [itemDesc, setItemDesc] = useState('');
   const [listingType, setListingType] = useState('SELL');
+  const [rentalPeriod, setRentalPeriod] = useState('Week'); // Day, Week, Month
   const [condition, setCondition] = useState('Used');
   const [category, setCategory] = useState('Electronics');
   const [imageFile, setImageFile] = useState(null); // Keep for backward compat or single view
@@ -111,6 +158,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // --- PASSWORD RESET DEEP LINK HANDLER ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const oobCode = params.get('oobCode');
+
+    if (mode === 'resetPassword' && oobCode) {
+      setView('reset_password');
+      // We will store oobCode in a ref or state if needed, but for now just rendering the view
+    }
+  }, []);
+
   // --- REAL-TIME LISTINGS LISTENER ---
   useEffect(() => {
     setIsLoading(true);
@@ -127,6 +186,19 @@ export default function App() {
     // Re-subscribe when user changes to ensure we have latest permissions/data
     const unsubscribe = listenToRequests((reqs) => {
       setRequests(reqs);
+
+      // --- LAZY CLEANUP: Physically delete expired requests ---
+      // This ensures Backend Deletion without a dedicated server cron job.
+      reqs.forEach(req => {
+        if (req.expiresAt) {
+          const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
+          if (expiry < new Date()) {
+            // It is expired but still in DB. Delete it physically.
+            console.log(`Lazy Deleting Expired Request: ${req.id}`);
+            deleteRequest(req.id);
+          }
+        }
+      });
     });
 
     return () => unsubscribe();
@@ -284,6 +356,8 @@ export default function App() {
       await createListing({
         name: itemName, price: Number(itemPrice), description: itemDesc,
         type: listingType, condition: condition, category: category,
+        rentalPeriod: listingType === 'RENT' ? rentalPeriod : null, // RENTAL FIELD
+        rentalStatus: listingType === 'RENT' ? 'Available' : null, // RENTAL FIELD
         image: mainImage, // Main image for card view backward compatibility
         images: imageUrls, // Array for valid multiple images
         seller: user.email, sellerName: user.displayName || "NUST Student",
@@ -299,12 +373,29 @@ export default function App() {
   const handleDeleteDecision = async (decision) => {
     if (!deleteModalItem) return;
     try {
-      if (decision === 'SOLD') { await markListingSold(deleteModalItem); }
-      else if (decision === 'DELETE') { await deleteListing(deleteModalItem); }
-      // No need to manually refresh - real-time listener will update
-      setDeleteModalItem(null);
+      if (decision === 'delete') {
+        await deleteListing(deleteModalItem);
+        setListings(prev => prev.filter(i => i.id !== deleteModalItem));
+      } else if (decision === 'sold') {
+        await markListingSold(deleteModalItem);
+      }
     } catch (err) { alert(err.message); }
+    finally { setDeleteModalItem(null); }
   };
+
+  const handleUpdateRental = async () => {
+    if (!rentalModalItem) return;
+    try {
+      let updates = { rentalStatus: 'Available', rentedUntil: null };
+      if (newRentalDate) {
+        updates = { rentalStatus: 'Rented', rentedUntil: new Date(newRentalDate) };
+      }
+      await updateListing(rentalModalItem.id, updates);
+      setRentalModalItem(null); setNewRentalDate('');
+      alert("Rental status updated!");
+    } catch (e) { alert(e.message); }
+  };
+
 
   const handlePostRequest = async (e) => {
     e.preventDefault();
@@ -491,39 +582,9 @@ export default function App() {
                   </div>
                   <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
                   <div className="relative">
-                    <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Create Password" value={password} onChange={e => setPassword(e.target.value)} required />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
+                    <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
                   </div>
-
-                  {/* PASSWORD STRENGTH INDICATOR */}
-                  {password && (
-                    <div className="space-y-2 bg-[#1a1c22] p-3 rounded-lg border border-white/5">
-                      <div className="flex gap-1 h-1 mb-2">
-                        <div className={`flex-1 rounded-full ${password.length >= 8 ? "bg-green-500" : "bg-gray-600"}`}></div>
-                        <div className={`flex-1 rounded-full ${/[A-Z]/.test(password) && /[a-z]/.test(password) ? "bg-green-500" : "bg-gray-600"}`}></div>
-                        <div className={`flex-1 rounded-full ${/\d/.test(password) && /[@$!%*?&]/.test(password) ? "bg-green-500" : "bg-gray-600"}`}></div>
-                      </div>
-                      <ul className="text-[10px] space-y-1 text-gray-400">
-                        <li className={`flex items-center gap-1 ${password.length >= 8 ? "text-green-400" : ""}`}>
-                          {password.length >= 8 ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} At least 8 Characters
-                        </li>
-                        <li className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? "text-green-400" : ""}`}>
-                          {/[A-Z]/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Uppercase Letter (A-Z)
-                        </li>
-                        <li className={`flex items-center gap-1 ${/[a-z]/.test(password) ? "text-green-400" : ""}`}>
-                          {/[a-z]/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Lowercase Letter (a-z)
-                        </li>
-                        <li className={`flex items-center gap-1 ${/\d/.test(password) ? "text-green-400" : ""}`}>
-                          {/\d/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Number (0-9)
-                        </li>
-                        <li className={`flex items-center gap-1 ${/[@$!%*?&]/.test(password) ? "text-green-400" : ""}`}>
-                          {/[@$!%*?&]/.test(password) ? <CheckCircle size={10} /> : <div className="w-2.5 h-2.5 rounded-full border border-gray-500"></div>} Special Character (!@#$...)
-                        </li>
-                      </ul>
-                    </div>
-                  )}
+                  <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Create Strong Password" />
                   <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10} /> Use a new password, NOT your NUST email password.</p>
                   <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
                   <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required />
@@ -588,6 +649,35 @@ export default function App() {
       </nav>
 
       <div className="max-w-3xl mx-auto p-4 space-y-6 relative z-10">
+
+        {view === 'reset_password' && (
+          <div className="flex items-center justify-center min-h-[60vh] animate-slide-up">
+            <div className="glass-card p-8 rounded-3xl w-full max-w-md border border-white/20 relative overflow-hidden bg-[#1a1c22]">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+              <h2 className="text-2xl font-bold text-white mb-2">Reset Password</h2>
+              <p className="text-gray-400 text-sm mb-6">Enter a strong new password for your account.</p>
+
+              <div className="space-y-4">
+                <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="New Password" />
+                <button onClick={async () => {
+                  const code = new URLSearchParams(window.location.search).get('oobCode');
+                  if (!code) return alert("Invalid or Expired Link");
+                  try {
+                    await confirmReset(code, password);
+                    alert("Password Reset Successful! Please Login.");
+                    // Clear params
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    setView('market');
+                    setIsLogin(true);
+                    setPassword('');
+                  } catch (e) { alert(e.message); }
+                }} className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 transition-all">
+                  Set New Password
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {view === 'market' && (
           <div className="animate-slide-up space-y-5">
@@ -695,13 +785,25 @@ export default function App() {
                               <User size={12} /> {item.sellerName}
                             </p>
                           </div>
-                          <span className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-sm font-bold text-white border border-white/30 shadow-lg shrink-0">
-                            Rs. {item.price}
+                          <span className={`px-3 py-1.5 rounded-lg text-sm font-bold text-white border border-white/30 shadow-lg shrink-0 ${item.type === 'RENT' ? 'bg-orange-500/20 backdrop-blur-md' : 'bg-white/20 backdrop-blur-md'}`}>
+                            {item.type === 'RENT' ? `Rs. ${item.price} / ${item.rentalPeriod || 'Week'}` : `Rs. ${item.price}`}
                           </span>
                         </div>
                       </div>
                       {item.isUrgent && <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg animate-pulse z-10"><Zap size={10} fill="white" /> URGENT</div>}
-                      <div className="absolute top-2 right-2 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10 z-10">{item.condition}</div>
+                      <div className="absolute top-2 right-2 flex gap-1 z-10">
+                        {item.type === 'RENT' && item.rentalStatus === 'Rented' && (
+                          <div className="bg-orange-500/90 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
+                            <Clock size={10} /> Rented
+                          </div>
+                        )}
+                        {item.type === 'RENT' && item.rentalStatus === 'Available' && (
+                          <div className="bg-green-500/90 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">
+                            Available for Rent
+                          </div>
+                        )}
+                        <div className="bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">{item.condition}</div>
+                      </div>
                     </div>
                     <div className="p-3">
                       <div className="flex justify-between items-center mb-2">
@@ -788,7 +890,16 @@ export default function App() {
                   <option>Stationary</option>
                   <option>Others</option>
                 </select>
-                <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={`${inputClass} flex-1`} placeholder="Price (PKR)" />
+                <div className="flex-1 flex gap-2">
+                  <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={`${inputClass} w-full`} placeholder={listingType === 'RENT' ? "Rent Price" : "Price (PKR)"} />
+                  {listingType === 'RENT' && (
+                    <select value={rentalPeriod} onChange={e => setRentalPeriod(e.target.value)} className={`${inputClass} w-24 px-1`}>
+                      <option value="Day">/Day</option>
+                      <option value="Week">/Week</option>
+                      <option value="Month">/Mo</option>
+                    </select>
+                  )}
+                </div>
               </div>
 
               <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className={`${inputClass} h-32 resize-none`} placeholder="Description..." />
@@ -991,7 +1102,10 @@ export default function App() {
                 </div>
                 <input className={inputClass} placeholder="Username" value={editName} onChange={e => setEditName(e.target.value)} />
                 <input className={inputClass} placeholder="WhatsApp" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
-                <input className={inputClass} placeholder="New Password (Optional)" value={editPassword} onChange={e => setEditPassword(e.target.value)} type="password" />
+                <div className="text-left">
+                  <p className="text-xs text-gray-500 mb-1 ml-1">Change Password (Optional)</p>
+                  <PasswordInput value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="New Password" />
+                </div>
                 <input className={inputClass} value={user.email} disabled title="Email cannot be changed" style={{ opacity: 0.5, cursor: 'not-allowed' }} />
 
                 <div className="flex gap-2 pt-2">
@@ -1073,6 +1187,12 @@ export default function App() {
                     <h3 className="text-lg font-bold text-white">{activeProduct.sellerName}</h3>
                     <p className="text-xs text-gray-400">{activeProduct.sellerDept || "NUSTian"} • Rep: {activeProduct.sellerReputation || 5.0} ⭐</p>
                   </div>
+                  {/* OWNER CONTROLS FOR RENTAL */}
+                  {user.email === activeProduct.seller && activeProduct.type === 'RENT' && (
+                    <button onClick={() => setRentalModalItem(activeProduct)} className="px-3 py-1.5 bg-blue-600 rounded-lg text-xs font-bold text-white hover:bg-blue-500 mr-2">
+                      Manage Rental
+                    </button>
+                  )}
                   {activeProduct.seller !== user.email && (
                     <button onClick={() => { setActiveProduct(null); handleListingClick(activeProduct); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
                       <MessageCircle size={16} /> Chat
@@ -1209,6 +1329,37 @@ export default function App() {
         <NavBtn icon={ClipboardList} active={view === 'requests'} onClick={() => setView('requests')} title="Community Board" />
         <NavBtn icon={User} active={view === 'profile'} onClick={() => setView('profile')} title="My Profile" />
       </div>
+
+      {/* RENTAL STATUS MODAL */}
+      {rentalModalItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1a1c22] rounded-2xl p-6 w-full max-w-sm border border-white/10 space-y-4">
+            <h3 className="text-xl font-bold text-white">Update Rental Status</h3>
+            <p className="text-gray-400 text-sm">Is "{rentalModalItem.name}" currently rented out?</p>
+
+            <div className="flex gap-2">
+              <button onClick={() => setNewRentalDate('')} className={`flex-1 py-2 rounded-lg font-bold border ${!newRentalDate ? 'bg-green-500/20 border-green-500 text-green-500' : 'border-white/10 text-gray-500'}`}>
+                Available
+              </button>
+              <button onClick={() => setNewRentalDate(new Date().toISOString().split('T')[0])} className={`flex-1 py-2 rounded-lg font-bold border ${newRentalDate ? 'bg-orange-500/20 border-orange-500 text-orange-500' : 'border-white/10 text-gray-500'}`}>
+                Rented
+              </button>
+            </div>
+
+            {newRentalDate && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Rented Until:</p>
+                <input type="date" value={newRentalDate} onChange={e => setNewRentalDate(e.target.value)} className={inputClass} />
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={handleUpdateRental} className="flex-1 py-2 bg-blue-600 rounded-xl font-bold text-white">Save Update</button>
+              <button onClick={() => { setRentalModalItem(null); setNewRentalDate(''); }} className="flex-1 py-2 bg-gray-700 rounded-xl font-bold text-white">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

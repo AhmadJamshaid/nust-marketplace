@@ -1,7 +1,8 @@
 import { auth, db, CLOUDINARY_CLOUD_NAME, CLOUDINARY_PRESET } from './firebase';
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  onAuthStateChanged, sendEmailVerification, updateProfile, updatePassword, sendPasswordResetEmail
+  onAuthStateChanged, sendEmailVerification, updateProfile, updatePassword, sendPasswordResetEmail,
+  verifyPasswordResetCode, confirmPasswordReset
 } from 'firebase/auth';
 import {
   collection, addDoc, getDocs, query, where, onSnapshot,
@@ -230,3 +231,14 @@ export const markChatRead = async (chatId, userEmail) => {
     await batch.commit();
   }
 };
+
+
+
+export const verifyResetCode = async (code) => {
+  return await verifyPasswordResetCode(auth, code);
+};
+
+export const confirmReset = async (code, newPassword) => {
+  await confirmPasswordReset(auth, code, newPassword);
+};
+
