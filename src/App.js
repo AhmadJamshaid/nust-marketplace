@@ -690,7 +690,7 @@ export default function App() {
               Object.keys(inboxGroups).map(id => {
                 const chatItem = listings.find(l => l.id === id) || requests.find(r => r.id === id);
                 const chatName = chatItem?.name || chatItem?.title || "Chat";
-                const lastMessage = inboxGroups[id][inboxGroups[id].length - 1];
+                const lastMessage = inboxGroups[id][0];
                 const unreadCounts = unreadChats; // Renamed state variable usage
 
                 return (
