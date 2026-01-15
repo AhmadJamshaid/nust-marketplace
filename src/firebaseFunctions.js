@@ -1,9 +1,9 @@
-import { auth, db, CLOUDINARY_CLOUD_NAME, CLOUDINARY_PRESET } from './firebase'; 
-import { 
+import { auth, db, CLOUDINARY_CLOUD_NAME, CLOUDINARY_PRESET } from './firebase';
+import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   onAuthStateChanged, sendEmailVerification, updateProfile, updatePassword
 } from 'firebase/auth';
-import { 
+import {
   collection, addDoc, getDocs, query, where, onSnapshot,
   orderBy, serverTimestamp, doc, setDoc, updateDoc, increment, deleteDoc, limit, writeBatch
 } from 'firebase/firestore';
@@ -89,7 +89,7 @@ export const reportListing = async (listingId, reason) => await updateDoc(doc(db
 export const uploadImageToCloudinary = async (file) => {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_PRESET); 
+  formData.append("upload_preset", CLOUDINARY_PRESET);
   const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
   if (!response.ok) throw new Error("Image upload failed.");
   const data = await response.json();
@@ -121,32 +121,33 @@ export const listenToRequests = (callback) => {
 export const sendMessage = async (chatId, sender, text) => {
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
-  await addDoc(collection(db, 'messages'), { 
-    chatId, 
-    sender, 
-    text, 
+  await addDoc(collection(db, 'messages'), {
+    chatId,
+    sender,
+    text,
     createdAt: serverTimestamp(),
-    clientTimestamp: timestamp.toISOString() 
+    clientTimestamp: timestamp.toISOString(),
+    read: false
   });
 };
 
 export const listenToMessages = (chatId, callback) => {
   const q = query(
-    collection(db, 'messages'), 
+    collection(db, 'messages'),
     where('chatId', '==', chatId)
     // orderBy('createdAt', 'asc') // Removed to avoid index issues
   );
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => {
       const data = d.data();
-      return { 
-        id: d.id, 
+      return {
+        id: d.id,
         ...data,
         // Use clientTimestamp if serverTimestamp is not yet set
         createdAt: data.createdAt || new Date(data.clientTimestamp)
       };
     });
-    
+
     // Sort client-side to ensure correct order without Firestore index
     messages.sort((a, b) => {
       const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
@@ -166,8 +167,8 @@ export const listenToAllMessages = (callback) => {
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => {
       const data = d.data();
-      return { 
-        id: d.id, 
+      return {
+        id: d.id,
         ...data,
         createdAt: data.createdAt || new Date(data.clientTimestamp)
       };
@@ -196,5 +197,35 @@ export const rateUser = async (targetUserEmail, ratingValue) => {
     const newCount = (totalRatings || 0) + 1;
     const newAverage = ((reputation * (totalRatings || 0)) + ratingValue) / newCount;
     await updateDoc(doc(db, 'users', userDoc.id), { reputation: Number(newAverage.toFixed(1)), totalRatings: increment(1) });
+  }
+};
+
+export const markChatRead = async (chatId, userEmail) => {
+  // Query messages in this chat that are NOT sent by the current user and are unread
+  const q = query(
+    collection(db, 'messages'),
+    where('chatId', '==', chatId),
+    where('read', '==', false)
+  );
+
+  const snap = await getDocs(q);
+  const batch = writeBatch(db);
+
+  let updateCount = 0;
+  snap.docs.forEach((doc) => {
+    const data = doc.data();
+    // Double check sender is not self (though query should handle most filtering, sender filter might need composite index if added to query)
+    // To avoid complex index requirements, we'll filter sender in client or just rely on logic that we only call this for incoming messages.
+    // Ideally: where('sender', '!=', userEmail)
+    // But '!=' queries often need indices with other clauses. 
+    // Let's do it safely:
+    if (data.sender !== userEmail) {
+      batch.update(doc.ref, { read: true });
+      updateCount++;
+    }
+  });
+
+  if (updateCount > 0) {
+    await batch.commit();
   }
 };
