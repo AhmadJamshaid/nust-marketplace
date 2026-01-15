@@ -133,8 +133,8 @@ export const sendMessage = async (chatId, sender, text) => {
 export const listenToMessages = (chatId, callback) => {
   const q = query(
     collection(db, 'messages'), 
-    where('chatId', '==', chatId), 
-    orderBy('createdAt', 'asc')
+    where('chatId', '==', chatId)
+    // orderBy('createdAt', 'asc') // Removed to avoid index issues
   );
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => {
@@ -146,6 +146,14 @@ export const listenToMessages = (chatId, callback) => {
         createdAt: data.createdAt || new Date(data.clientTimestamp)
       };
     });
+    
+    // Sort client-side to ensure correct order without Firestore index
+    messages.sort((a, b) => {
+      const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+      const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+      return timeA - timeB;
+    });
+
     callback(messages);
   }, (error) => {
     console.error("Messages listener error:", error);
