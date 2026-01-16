@@ -12,11 +12,11 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing
+  confirmReset, updateListing, reloadUser
 } from './firebaseFunctions';
 
 // --- REUSABLE PASSWORD COMPONENT ---
-const PasswordInput = ({ value, onChange, placeholder = "Password" }) => {
+const PasswordInput = ({ value, onChange, placeholder = "Password", ...props }) => {
   const [show, setShow] = useState(false);
   const requirements = [
     { regex: /.{8,}/, label: "8+ Chars" },
@@ -47,6 +47,7 @@ const PasswordInput = ({ value, onChange, placeholder = "Password" }) => {
           value={value}
           onChange={onChange}
           required
+          {...props}
         />
         <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
           {show ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -67,6 +68,22 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+
+  // --- POLLING FOR EMAIL VERIFICATION ---
+  useEffect(() => {
+    let interval;
+    if (user && !user.emailVerified) {
+      interval = setInterval(async () => {
+        const updatedUser = await reloadUser();
+        if (updatedUser?.emailVerified) {
+          setUser({ ...updatedUser });
+        }
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // --- AUTH HANDLERS ---
 
   // --- ADVANCED FILTERS ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +114,8 @@ export default function App() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isForgot, setIsForgot] = useState(false);
+
 
   // Rental Management State
   const [rentalModalItem, setRentalModalItem] = useState(null);
@@ -322,17 +341,7 @@ export default function App() {
     finally { setAuthLoading(false); }
   };
 
-  const handleForgotPassword = async () => {
-    const resetEmail = prompt("Enter your email to reset password:");
-    if (resetEmail) {
-      try {
-        await resetPassword(resetEmail);
-        alert("Password reset link sent to " + resetEmail);
-      } catch (err) {
-        alert("Error: " + err.message);
-      }
-    }
-  };
+
 
   const handlePostItem = async (e) => {
     e.preventDefault();
@@ -567,8 +576,28 @@ export default function App() {
                 <h3 className="text-yellow-100 font-bold">Verification Pending</h3>
                 <p className="text-xs text-yellow-500/80 mt-1">We sent a link to {user.email}</p>
               </div>
+              <p className="text-xs text-green-400 animate-pulse">Waiting for verification... (Auto-updates)</p>
               <button onClick={() => resendVerificationLink()} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">Resend Link</button>
               <button onClick={logoutUser} className="text-sm text-gray-500 hover:text-white">Sign Out</button>
+            </div>
+          ) : isForgot ? (
+            <div className="space-y-4">
+              <div className="text-center mb-4">
+                <h2 className="text-xl font-bold text-white">Reset Password</h2>
+                <p className="text-sm text-gray-400">Enter your email to receive a reset link.</p>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await resetPassword(email);
+                } catch (err) { console.error("Reset Password Error:", err); }
+                alert("If an account exists with this email, a reset link has been sent.");
+                setIsForgot(false);
+              }} className="space-y-4">
+                <input className={inputClass} type="email" placeholder="Enter your email" value={email} onChange={e => setEmail(e.target.value)} required />
+                <button className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-lg shadow-lg">Send Link</button>
+                <button type="button" onClick={() => setIsForgot(false)} className="w-full text-sm text-gray-400 hover:text-white">Back to Login</button>
+              </form>
             </div>
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
@@ -580,25 +609,22 @@ export default function App() {
                       {profilePic ? <img src={URL.createObjectURL(profilePic)} className="w-full h-full object-cover" alt="Profile Preview" /> : <Camera className="text-gray-500 group-hover:text-white" />}
                     </div>
                   </div>
-                  <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
-                  <div className="relative">
-                    <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required />
-                  </div>
-                  <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Create Strong Password" />
+                  <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
+                  <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Create Strong Password" autoComplete="new-password" />
                   <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10} /> Use a new password, NOT your NUST email password.</p>
-                  <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required />
-                  <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required />
+                  <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required autoComplete="name" />
+                  <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required autoComplete="tel" />
                   <select className={inputClass} value={department} onChange={e => setDepartment(e.target.value)}>
                     <option value="SEECS">SEECS</option><option value="SMME">SMME</option><option value="NBS">NBS</option><option value="S3H">S3H</option><option value="SADA">SADA</option><option value="SCME">SCME</option>
                   </select>
-                  <input className={inputClass} type="email" placeholder="NUST Email (std@nust.edu.pk)" value={email} onChange={e => setEmail(e.target.value)} required />
+                  <input className={inputClass} type="email" placeholder="NUST Email (std@nust.edu.pk)" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
                 </>
               )}
               {isLogin && (
                 <>
-                  <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required />
+                  <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
                   <div className="relative">
-                    <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
+                    <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -620,7 +646,7 @@ export default function App() {
                 </button>
                 {isLogin && (
                   <div className="mt-2">
-                    <button type="button" onClick={handleForgotPassword} className="text-xs text-blue-400 hover:text-white transition-colors">Forgot Password?</button>
+                    <button type="button" onClick={() => setIsForgot(true)} className="text-xs text-blue-400 hover:text-white transition-colors">Forgot Password?</button>
                   </div>
                 )}
               </div>

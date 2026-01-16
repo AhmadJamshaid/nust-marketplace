@@ -21,13 +21,28 @@ export const checkUsernameUnique = async (username) => {
 export const loginWithUsername = async (username, password) => {
   const q = query(collection(db, 'users'), where('username', '==', username));
   const snap = await getDocs(q);
-  if (snap.empty) throw new Error("Username not found. Please Sign Up.");
+  // Prevent enumeration by not revealing if username specifically failed
+  if (snap.empty) throw new Error("Invalid username or password.");
   const userEmail = snap.docs[0].data().email;
-  return await signInWithEmailAndPassword(auth, userEmail, password);
+  try {
+    return await signInWithEmailAndPassword(auth, userEmail, password);
+  } catch (error) {
+    throw new Error("Invalid username or password.");
+  }
+};
+
+
+// --- HELPER --
+const validatePassword = (password) => {
+  const regex = /(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&]).{8,}/;
+  if (!regex.test(password)) {
+    throw new Error("Password must be 8+ chars, include Upper, Lower, Num, and Special char.");
+  }
 };
 
 export const signUpUser = async (email, password, userData) => {
   if (!email.endsWith('.edu.pk')) throw new Error("Access Denied: Use official NUST email (@*.edu.pk).");
+  validatePassword(password);
   const isUnique = await checkUsernameUnique(userData.username);
   if (!isUnique) throw new Error("Username taken. Choose another.");
 
@@ -50,12 +65,22 @@ export const updateUserProfile = async (uid, data, newPassword) => {
         photoURL: data.photoURL || auth.currentUser.photoURL
       });
     }
-    if (newPassword) await updatePassword(auth.currentUser, newPassword);
+    if (newPassword) {
+      validatePassword(newPassword);
+      await updatePassword(auth.currentUser, newPassword);
+    }
   }
 };
 
 export const logoutUser = () => signOut(auth);
 export const resendVerificationLink = () => auth.currentUser && sendEmailVerification(auth.currentUser);
+export const reloadUser = async () => {
+  if (auth.currentUser) {
+    await auth.currentUser.reload();
+    return auth.currentUser;
+  }
+  return null;
+};
 export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
 
 export const getPublicProfile = async (email) => {
@@ -239,6 +264,7 @@ export const verifyResetCode = async (code) => {
 };
 
 export const confirmReset = async (code, newPassword) => {
+  validatePassword(newPassword);
   await confirmPasswordReset(auth, code, newPassword);
 };
 
