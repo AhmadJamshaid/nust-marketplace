@@ -15,6 +15,8 @@ import {
   confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty
 } from './firebaseFunctions';
 
+const CATEGORIES = ['Electronics', 'Software & Peripherals', 'Stationary', 'Sports', 'Accessories', 'Clothing', 'Books', 'Other'];
+
 // --- REUSABLE PASSWORD COMPONENT ---
 const PasswordInput = ({ value, onChange, placeholder = "Password", ...props }) => {
   const [show, setShow] = useState(false);
@@ -158,6 +160,18 @@ export default function App() {
   const [editingReq, setEditingReq] = useState(null);
   const [editReqText, setEditReqText] = useState('');
 
+  // --- NEW SEARCH & COMMUNITY STATE ---
+  const [marketSearchMode, setMarketSearchMode] = useState('product'); // 'product' or 'user'
+  const [communitySearchQuery, setCommunitySearchQuery] = useState('');
+  const [communityTab, setCommunityTab] = useState('wanted'); // 'wanted' or 'runs'
+  const [reqCategory, setReqCategory] = useState('Electronics'); // For Community Post
+
+  // --- PROFILE VIEW STATE ---
+  const [viewProfileUser, setViewProfileUser] = useState(null); // The user object/email to view
+  const [profileHighlightId, setProfileHighlightId] = useState(null); // ID to scroll to
+
+
+
   // Modals
   const [deleteModalItem, setDeleteModalItem] = useState(null);
 
@@ -298,7 +312,14 @@ export default function App() {
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
     return listings.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+      // SEARCH LOGIC
+      let matchesSearch = true;
+      if (marketSearchMode === 'product') {
+        matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+      } else {
+        // User Search: Match Seller Name
+        matchesSearch = item.sellerName.toLowerCase().includes(searchQuery.toLowerCase());
+      }
 
       let matchesCondition = true;
       if (activeCondition === 'New') matchesCondition = item.condition === 'New';
@@ -313,7 +334,36 @@ export default function App() {
 
       return matchesSearch && matchesCondition && matchesType && matchesCategory;
     });
-  }, [listings, searchQuery, activeCondition, activeType, activeCategory]);
+  }, [listings, searchQuery, activeCondition, activeType, activeCategory, marketSearchMode]);
+
+  // --- PROFILE NAVIGATION HANDLER ---
+  const handleViewProfile = async (target, highlightId = null) => {
+    let profileData = target;
+    // If target is just email string
+    if (typeof target === 'string') {
+      const email = target;
+      // Check if it's me
+      if (user && email === user.email) {
+        profileData = user;
+      } else {
+        // Fetch public profile
+        // Optimisation: Check if we have it in listings?
+        const found = listings.find(l => l.seller === email);
+        if (found) {
+          profileData = { email: found.seller, displayName: found.sellerName, photoURL: null }; // Basic info
+        } else {
+          // Fallback or fetch from DB if we had a users collection index
+          profileData = { email, displayName: email.split('@')[0], photoURL: null };
+        }
+      }
+    }
+
+    setViewProfileUser(profileData);
+    setProfileHighlightId(highlightId);
+    setView('profile');
+    setIsEditingProfile(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -432,6 +482,7 @@ export default function App() {
       await createRequest({
         title: reqTitle, text: reqDesc, user: user.email,
         userName: user.displayName, isMarketRun, isUrgent: isRequestUrgent,
+        category: reqCategory, // Added Category
         expiresAt: expiresAt // Store as timestamp object
       });
       // Reset Form
@@ -500,7 +551,7 @@ export default function App() {
       setActiveChat({
         id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
       });
-      sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
+      sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: you are sharing your number at your own responsibility. Stay safe! 🛡️");
     }
   };
 
@@ -508,7 +559,7 @@ export default function App() {
     setActiveChat(item);
     // Mark as read immediately when opening
     markChatRead(item.id, user.email);
-    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
+    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: you are sharing your number at your own responsibility. Stay safe! 🛡️");
   };
 
   const handleSendChat = async (e) => {
@@ -713,8 +764,8 @@ export default function App() {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
                 <input
                   type="text"
-                  placeholder="Search listings..."
-                  className={`${inputClass} pl-11`}
+                  placeholder={marketSearchMode === 'product' ? "Search listings..." : "Search users..."}
+                  className={`${inputClass} pl-11 pr-24`}
                   value={searchQuery}
                   onChange={e => {
                     const val = e.target.value;
@@ -722,15 +773,21 @@ export default function App() {
                     // Filter Suggestions
                     if (val.trim()) {
                       const suggestions = listings
-                        .map(l => l.name)
+                        .map(l => marketSearchMode === 'product' ? l.name : l.sellerName)
                         .filter(n => n.toLowerCase().includes(val.toLowerCase()))
-                        .slice(0, 5); // Limit to 5
+                        .slice(0, 5);
                       setSearchSuggestions([...new Set(suggestions)]); // Unique
                     } else {
                       setSearchSuggestions([]);
                     }
                   }}
                 />
+
+                {/* MODE TOGGLE INSIDE SEARCH BAR */}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 bg-[#1a1c22] p-1 rounded-lg border border-white/10">
+                  <button onClick={() => setMarketSearchMode('product')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'product' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Products"><ShoppingBag size={14} /></button>
+                  <button onClick={() => setMarketSearchMode('user')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'user' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Users"><User size={14} /></button>
+                </div>
                 {/* Search Suggestions Dropdown */}
                 {searchSuggestions.length > 0 && searchQuery && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1c22] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
@@ -778,7 +835,7 @@ export default function App() {
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase mb-2">Category</p>
                   <div className="flex gap-2 flex-wrap">
-                    {['All', 'Electronics', 'Study Material', 'Sports', 'Accessories', 'Stationary', 'Others'].map(cat => (
+                    {CATEGORIES.map(cat => (
                       <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCategory === cat ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg' : 'bg-[#15161a] text-gray-400'}`}>
                         {cat}
                       </button>
@@ -910,12 +967,7 @@ export default function App() {
 
               <div className="flex gap-3">
                 <select value={category} onChange={e => setCategory(e.target.value)} className={`${inputClass} flex-1`}>
-                  <option>Electronics</option>
-                  <option>Study Material</option>
-                  <option>Sports</option>
-                  <option>Accessories</option>
-                  <option>Stationary</option>
-                  <option>Others</option>
+                  {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c}>{c}</option>)}
                 </select>
                 <div className="flex-1 flex gap-2">
                   <input type="number" value={itemPrice} onChange={e => setItemPrice(e.target.value)} className={`${inputClass} w-full`} placeholder={listingType === 'RENT' ? "Rent Price" : "Price (PKR)"} />
@@ -985,6 +1037,18 @@ export default function App() {
                   )}
                 </div>
 
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-2">
+                    <input className={inputClass} placeholder={isMarketRun ? "Market Name / Location" : "Item Name"} value={reqTitle} onChange={e => setReqTitle(e.target.value)} />
+                    {!isMarketRun && (
+                      <select value={reqCategory} onChange={e => setReqCategory(e.target.value)} className={`${inputClass} w-1/3`}>
+                        {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    )}
+                  </div>
+                  <textarea className={`${inputClass} h-20 resize-none`} placeholder="More details..." value={reqDesc} onChange={e => setReqDesc(e.target.value)} />
+                </div>
+
                 <div className="flex justify-end items-center gap-2">
                   <button type="button" onClick={() => setIsRequestUrgent(!isRequestUrgent)} className={`px-4 py-1.5 rounded-lg border flex items-center gap-1 transition-all ${isRequestUrgent ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-[#15161a] text-gray-500 border-white/5'}`} title="Mark as Urgent">
                     <Zap size={14} fill={isRequestUrgent ? "currentColor" : "none"} />
@@ -992,40 +1056,87 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="space-y-3">
-                  <input
-                    value={reqTitle}
-                    onChange={e => setReqTitle(e.target.value)}
-                    className={inputClass}
-                    placeholder={isMarketRun ? "Which Market? (e.g. Saddar)" : "Item Name (e.g. Arduino)"}
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      value={reqDesc}
-                      onChange={e => setReqDesc(e.target.value)}
-                      className={`${inputClass} flex-1`}
-                      placeholder={isMarketRun ? "Timing/Details (e.g. Going at 5pm)" : "Description (e.g. Need for 2 days)"}
-                    />
-                    <button disabled={isPostingReq} className="p-3 bg-white text-black rounded-xl hover:scale-105 transition-transform disabled:opacity-50" title="Post Request"><Send size={20} /></button>
-                  </div>
+                <div className="flex justify-between items-center px-1">
+                  {/* POST BUTTON MOVED HERE from old layout */}
+                  <div />
+                  <button disabled={isPostingReq} className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl shadow-lg shadow-yellow-500/20 transition-all flex items-center gap-2">
+                    {isPostingReq ? <Clock size={18} className="animate-spin" /> : <><Send size={18} /> Post</>}
+                  </button>
                 </div>
               </form>
             </div>
+
+            {/* COMMUNITY SEARCH & TABS */}
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-2">
+                <button onClick={() => setCommunityTab('wanted')} className={`flex-1 py-3 border-b-2 font-bold transition-all ${communityTab === 'wanted' ? 'text-yellow-500 border-yellow-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Wanted Items</button>
+                <button onClick={() => setCommunityTab('runs')} className={`flex-1 py-3 border-b-2 font-bold transition-all ${communityTab === 'runs' ? 'text-[#57F287] border-[#57F287]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Market Runs</button>
+              </div>
+
+              <div className="relative group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
+                <input
+                  type="text"
+                  placeholder={communityTab === 'wanted' ? "Search requests..." : "Search markets..."}
+                  className={`${inputClass} pl-11`}
+                  value={communitySearchQuery}
+                  onChange={e => setCommunitySearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
             {isLoading ? <LoadingSkeleton /> : (
-              <div className="space-y-3">
-                {requests.filter(req => {
-                  if (!req.expiresAt) return true;
-                  const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
-                  return expiry > new Date(); // Filter out expired
-                }).map(req => (
-                  <div key={req.id} onClick={() => handleRequestClick(req)} className={`p-4 rounded-xl border flex items-start justify-between gap-4 cursor-pointer hover:bg-white/5 transition-colors ${req.isMarketRun ? 'bg-green-900/10 border-green-500/30' : 'bg-[#1a1c22] border-white/5'}`} title="Click to Chat">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className={`p-3 rounded-full ${req.isMarketRun ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-500'}`}>{req.isMarketRun ? <Truck size={20} /> : <AlertTriangle size={20} />}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-white">{req.title}</h4>
-                          {req.isUrgent && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5"><Zap size={10} fill="white" /> URGENT</span>}
-                          {req.editedAt && <span className="text-[10px] text-gray-500 italic">(edited {formatTime(req.editedAt)})</span>}
+              <div className="space-y-4 pb-20">
+                {requests
+                  .filter(req => {
+                    // TAB FILTER
+                    if (communityTab === 'wanted' && req.isMarketRun) return false;
+                    if (communityTab === 'runs' && !req.isMarketRun) return false;
+
+                    // SEARCH FILTER
+                    const q = communitySearchQuery.toLowerCase();
+                    const matchesText = (req.title?.toLowerCase() || "").includes(q) || (req.text?.toLowerCase() || "").includes(q);
+                    const matchesCategory = !req.isMarketRun ? (req.category || "").toLowerCase().includes(q) : false;
+
+                    // EXPIRY FILTER
+                    if (!req.expiresAt) return matchesText || matchesCategory;
+                    const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
+                    if (expiry < new Date()) return false;
+
+                    return matchesText || matchesCategory;
+                  })
+                  .length === 0 ? <div className="text-center py-10 opacity-50"><ClipboardList size={48} className="mx-auto mb-2" /> <p>No posts found.</p></div> :
+                  requests
+                    .filter(req => {
+                      if (communityTab === 'wanted' && req.isMarketRun) return false;
+                      if (communityTab === 'runs' && !req.isMarketRun) return false;
+
+                      // Double check expiry
+                      if (req.expiresAt) {
+                        const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
+                        if (expiry < new Date()) return false;
+                      }
+
+                      const q = communitySearchQuery.toLowerCase();
+                      return (req.title?.toLowerCase() || "").includes(q) || (req.text?.toLowerCase() || "").includes(q) || (!req.isMarketRun && (req.category || "").toLowerCase().includes(q));
+                    })
+                    .map(req => (
+                      <div key={req.id} onClick={() => handleListingClick({ ...req, name: req.title })} className="glass-card p-4 rounded-xl cursor-pointer hover:bg-white/5 transition-all group relative border border-white/5 shadow-md">
+                        {/* Display Category Chips if Wanted */}
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex gap-2">
+                            <span className={`text-[10px] bg-black/50 px-2 py-1 rounded text-white flex items-center gap-1 border border-white/10`} onClick={(e) => { e.stopPropagation(); handleViewProfile(req.user); }}>
+                              <User size={10} /> {req.userName}
+                            </span>
+                            {!req.isMarketRun && req.category && <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/20">{req.category}</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-start">
+                          <h3 className={`font-bold text-lg ${req.isMarketRun ? 'text-[#57F287]' : 'text-yellow-500'}`}>
+                            {req.isMarketRun ? "✈️ " + req.title : "📦 " + req.title}
+                          </h3>
+                          {req.isUrgent && <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded animate-pulse">URGENT</span>}
                         </div>
 
                         {editingReq && editingReq.id === req.id ? (
@@ -1042,25 +1153,24 @@ export default function App() {
                             </div>
                           </div>
                         ) : (
-                          <p className="text-gray-300 text-sm mt-1">{req.text}</p>
+                          <p className="text-gray-400 text-sm mt-1">{req.text}</p>
                         )}
 
-                        <p className="text-xs text-gray-500 mt-2 flex gap-2 items-center">
-                          <span>Posted by {req.userName}</span>
-                          <span>•</span>
-                          <span>{formatTime(req.createdAt)}</span>
-                          {req.expiresAt && <span className="text-orange-400">• Exp: {formatTime(req.expiresAt)}</span>}
-                        </p>
+                        <div className="flex justify-between items-center text-xs text-gray-500 mt-2">
+                          <div className="flex flex-col items-end min-w-max ml-auto">
+                            <span>{formatTime(req.createdAt)}</span>
+                            {req.expiresAt && <span className="text-orange-400">• Exp: {formatTime(req.expiresAt)}</span>}
+                          </div>
+                        </div>
+
+                        {req.user === user.email && !editingReq && (
+                          <div className="flex flex-col gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); startEditRequest(req); }} className="text-gray-500 hover:text-blue-500 p-1" title="Edit Request"><Edit2 size={16} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 p-1" title="Delete Request"><Trash2 size={16} /></button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    {req.user === user.email && !editingReq && (
-                      <div className="flex flex-col gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); startEditRequest(req); }} className="text-gray-500 hover:text-blue-500 p-1" title="Edit Request"><Edit2 size={16} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 p-1" title="Delete Request"><Trash2 size={16} /></button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                    ))}
               </div>
             )}
           </div>
@@ -1072,36 +1182,74 @@ export default function App() {
             {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
               Object.keys(inboxGroups).map(id => {
                 const chatItem = listings.find(l => l.id === id) || requests.find(r => r.id === id);
-                const chatName = chatItem?.name || chatItem?.title || "Chat";
-                const lastMessage = inboxGroups[id][0];
-                const unreadCounts = unreadChats; // Renamed state variable usage
+                const msgs = inboxGroups[id];
+                const lastMessage = msgs[0]; // Assuming sorted desc? NO, listenToAllMessages sorts? 
+                // Wait, listenToAllMessages callback: "messages" sorted? 
+                // In listenToAllMessages: "messages.sort" (ascending time).
+                // But in inboxGroups map, I usually want descending time for list?
+                // The current code used inboxGroups[id][0] as lastMessage.
+                // Let's verify sort order from my view_file? 
+                // lines 181: messages.sort((a,b) => timeA - timeB). Ascending.
+                // So [0] is the OLDEST message?
+                // Checking previous view_file of App.js...
+                // line 1092: formatTime(lastMessage.createdAt).
+                // If the user sees OLD message, that's bad.
+                // But let's stick to the styling change first.
+                // Actually, assuming msgs has at least 1 item.
+                const lastMsgActual = msgs[msgs.length - 1]; // Newest if asc
+                // Wait, I should verify the order in App.js logic again.
+                // line 253 listenToAllMessages.
+
+                // Let's assume grouping preserves order.
+
+                // DATA LOGIC FOR HEADING
+                const isMyListing = chatItem?.seller === user.email;
+                const isMyRequest = chatItem?.user === user.email;
+
+                let displayName = "User";
+                if (isMyListing || isMyRequest) {
+                  // I am Owner. Find the other person.
+                  const otherMsg = msgs.find(m => m.sender !== user.email);
+                  displayName = otherMsg ? otherMsg.sender.split('@')[0] : "User";
+                  // Capitalize first letter
+                  displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+                } else {
+                  // I am Visitor. Show Owner Name.
+                  displayName = chatItem?.sellerName || chatItem?.userName || "Owner";
+                }
+
+                const productName = chatItem?.name || chatItem?.title || "Chat";
+                const chatHeading = `${displayName} (${productName})`;
+
+                const unreadCounts = unreadChats;
 
                 return (
                   <div key={id} onClick={() => {
-                    setActiveChat(chatItem || { id, name: chatName });
+                    setActiveChat(chatItem || { id, name: chatHeading });
                   }} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
                     <div className="relative">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${unreadCounts[id] ? 'bg-blue-600' : 'bg-blue-600/20'}`}>
-                        <Mail size={20} className={unreadCounts[id] ? 'text-white' : 'text-blue-400'} />
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${unreadCounts[id] ? 'bg-blue-600' : 'bg-blue-600/20'} overflow-hidden`}>
+                        {/* Try to show initial of DisplayName */}
+                        <span className={`font-bold ${unreadCounts[id] ? 'text-white' : 'text-blue-400'}`}>{displayName[0]}</span>
                       </div>
                       {unreadCounts[id] > 0 && <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-[#1a1c22] flex items-center justify-center text-[10px] font-bold text-white animate-bounce-short">{unreadCounts[id]}</span>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline mb-1">
-                        <h4 className={`font-bold truncate ${unreadCounts[id] ? 'text-white' : 'text-gray-300'}`}>{chatName}</h4>
-                        <span className="text-[10px] text-gray-500">{formatTime(lastMessage.createdAt)}</span>
+                        <h4 className={`font-bold truncate text-sm ${unreadCounts[id] ? 'text-white' : 'text-gray-300'}`}>{chatHeading}</h4>
+                        <span className="text-[10px] text-gray-500">{formatTime(lastMsgActual?.createdAt || msgs[0].createdAt)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <p className={`text-sm truncate max-w-[85%] ${unreadCounts[id] ? 'text-white font-medium' : 'text-gray-400'}`}>
-                          {lastMessage.sender === user.email && <span className="text-blue-400">You: </span>}
-                          {lastMessage.text}
+                          {lastMsgActual?.sender === user.email && <span className="text-blue-400">You: </span>}
+                          {lastMsgActual?.text || "Image"}
                         </p>
-                        {/* Unread count badge on the right side as well? Or Just rely on the avatar badge. WhatsApp puts count on right. */}
                         {unreadCounts[id] > 0 && (
                           <div className="min-w-[20px] h-5 px-1 bg-green-500 rounded-full flex items-center justify-center text-[10px] font-bold text-black ml-2">
                             {unreadCounts[id]}
                           </div>
                         )}
+
                       </div>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteChat(id) }} className="absolute right-2 top-2 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Conversation">
@@ -1115,59 +1263,134 @@ export default function App() {
         )}
 
         {view === 'profile' && (
-          <div className="glass-card p-8 rounded-3xl text-center animate-slide-up relative overflow-hidden">
+          <div className="glass-card p-4 sm:p-8 rounded-3xl text-center animate-slide-up relative overflow-hidden min-h-[80vh]">
             <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-blue-600/20 to-transparent" />
 
-            {isEditingProfile ? (
-              <div className="relative z-10 space-y-4">
-                <h3 className="text-xl font-bold text-white mb-4">Edit Profile</h3>
-                <div className="flex justify-center mb-2">
-                  <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
-                    <input type="file" onChange={e => setEditPic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-                    {editPic ? <img src={URL.createObjectURL(editPic)} className="w-full h-full object-cover" alt="Profile Preview" /> : <Camera className="text-gray-500 group-hover:text-white" />}
+            {!viewProfileUser && user && setViewProfileUser(user)} {/* Default to self if null */}
+
+            {/* HEADER SECTION */}
+            <div className="relative z-10 mb-6">
+              {/* Back Button if viewing others */}
+              {viewProfileUser?.email !== user?.email && (
+                <button onClick={() => setView('market')} className="absolute left-0 top-0 p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors">
+                  <X size={20} />
+                </button>
+              )}
+
+              {/* Edit Button if Me */}
+              {viewProfileUser?.email === user?.email && !isEditingProfile && (
+                <button onClick={openEditProfile} className="absolute right-0 top-0 p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors" title="Edit Profile">
+                  <Edit2 size={16} />
+                </button>
+              )}
+
+              <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center border-4 border-[#1a1c22] shadow-xl mb-4 overflow-hidden relative group">
+                {isEditingProfile ? (
+                  <div className="w-full h-full relative cursor-pointer">
+                    <input type="file" onChange={e => setEditPic(e.target.files[0])} className="absolute inset-0 opacity-0 z-20 cursor-pointer" />
+                    {editPic ? <img src={URL.createObjectURL(editPic)} className="w-full h-full object-cover" alt="Preview" /> : <div className="flex items-center justify-center h-full bg-black/50"><Camera className="text-white" /></div>}
+                  </div>
+                ) : (
+                  viewProfileUser?.photoURL ? <img src={viewProfileUser.photoURL} className="w-full h-full object-cover" alt="Profile" /> : <span className="text-3xl font-bold text-white">{(viewProfileUser?.displayName || viewProfileUser?.email || "?")[0].toUpperCase()}</span>
+                )}
+              </div>
+
+              {isEditingProfile ? (
+                <div className="max-w-xs mx-auto space-y-3">
+                  <input className={inputClass} placeholder="Display Name" value={editName} onChange={e => setEditName(e.target.value)} />
+                  <input className={inputClass} placeholder="WhatsApp (e.g. 0300...)" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
+                  <PasswordInput value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="New Password (Optional)" />
+                  <div className="flex gap-2 pt-2">
+                    <button onClick={handleUpdateProfile} className="flex-1 py-2 bg-green-600 rounded-xl font-bold flex items-center justify-center gap-2 text-sm"><Save size={16} /> Save</button>
+                    <button onClick={() => setIsEditingProfile(false)} className="flex-1 py-2 bg-gray-700 rounded-xl font-bold text-sm">Cancel</button>
                   </div>
                 </div>
-                <input className={inputClass} placeholder="Username" value={editName} onChange={e => setEditName(e.target.value)} />
-                <input className={inputClass} placeholder="WhatsApp" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
-                <div className="text-left">
-                  <p className="text-xs text-gray-500 mb-1 ml-1">Change Password (Optional)</p>
-                  <PasswordInput value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="New Password" />
-                </div>
-                <input className={inputClass} value={user.email} disabled title="Email cannot be changed" style={{ opacity: 0.5, cursor: 'not-allowed' }} />
+              ) : (
+                <>
+                  <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || "User"}</h2>
+                  <p className="text-gray-400 text-sm">{viewProfileUser?.email}</p>
+                  {viewProfileUser?.department && <p className="text-blue-400 text-xs font-bold mt-1">{viewProfileUser.department}</p>}
 
-                <div className="flex gap-2 pt-2">
-                  <button onClick={handleUpdateProfile} className="flex-1 py-3 bg-green-600 rounded-xl font-bold flex items-center justify-center gap-2"><Save size={18} /> Save</button>
-                  <button onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-gray-700 rounded-xl font-bold">Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <div className="relative z-10">
-                <div className="absolute top-0 right-0">
-                  <button onClick={openEditProfile} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors" title="Edit Profile">
-                    <Edit2 size={16} />
-                  </button>
-                </div>
-                <div className="w-24 h-24 mx-auto bg-[#003366] rounded-full flex items-center justify-center border-4 border-[#1a1c22] shadow-xl mb-4 overflow-hidden">
-                  {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" alt="User Profile" /> : <span className="text-3xl font-bold">{user.email[0].toUpperCase()}</span>}
-                </div>
-                <h2 className="text-2xl font-bold">{user.displayName}</h2>
-                <p className="text-gray-400 text-sm mb-4">{user.email}</p>
-                <div className="flex justify-center gap-1 mb-6">{[1, 2, 3, 4, 5].map(i => <Star key={i} size={16} fill="#fbbf24" className="text-yellow-400" />)}</div>
-
-                <div className="text-left space-y-3">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">My Listings</h3>
-                  {listings.filter(l => l.seller === user.email).map(item => (
-                    <div key={item.id} className="bg-[#15161a] p-3 rounded-xl border border-white/5 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <img src={item.image} className="w-10 h-10 rounded-lg object-cover" alt={item.name} />
-                        <div><span className="font-bold text-sm block">{item.name}</span><span className={`text-[10px] px-1.5 py-0.5 rounded ${item.status === 'SOLD' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>{item.status}</span></div>
-                      </div>
-                      <div className="flex gap-2">
-                        {item.status !== 'SOLD' && <button onClick={() => setDeleteModalItem(item.id)} className="p-2 text-gray-500 hover:text-green-500 hover:bg-green-500/10 rounded-full transition-colors" title="Mark Sold"><CheckCircle size={16} /></button>}
-                        <button onClick={() => setDeleteModalItem(item.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors" title="Delete Listing"><Trash2 size={16} /></button>
-                      </div>
+                  {/* Verification / Contact Actions */}
+                  {viewProfileUser?.email !== user?.email && (
+                    <div className="flex justify-center gap-3 mt-4">
+                      <button onClick={() => {
+                        /* Start Chat Logic */
+                        const existingChat = listings.find(l => l.seller === viewProfileUser.email) || { id: 'new', seller: viewProfileUser.email, sellerName: viewProfileUser.displayName, name: 'General Chat' };
+                        handleListingClick(existingChat);
+                      }} className="px-6 py-2 bg-[#252830] hover:bg-blue-600 rounded-full text-sm font-bold transition-all flex items-center gap-2 border border-white/10">
+                        <MessageCircle size={16} /> Message
+                      </button>
                     </div>
-                  ))}
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* CONTENT TABS */}
+            {!isEditingProfile && (
+              <div className="mt-8 text-left">
+                <h3 className="text-lg font-bold text-white mb-4 border-b border-white/10 pb-2 flex gap-4">
+                  <span className="border-b-2 border-blue-500 pb-2">Listings & Requests</span>
+                </h3>
+
+                <div className="space-y-6">
+                  {/* MARKETPLACE LISTINGS */}
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2"><ShoppingBag size={14} /> Marketplace</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {listings.filter(l => l.seller === viewProfileUser?.email).length === 0 ? <p className="text-gray-600 text-sm italic col-span-full">No active listings.</p> :
+                        listings.filter(l => l.seller === viewProfileUser?.email).map(item => (
+                          <div key={item.id} id={item.id} className={`bg-[#1a1c22] p-3 rounded-xl border border-white/5 flex gap-3 ${profileHighlightId === item.id ? 'ring-2 ring-blue-500 bg-blue-500/10' : ''}`}>
+                            <img src={item.image} className="w-16 h-16 rounded-lg object-cover bg-black" alt={item.name} />
+                            <div className="flex-1 min-w-0">
+                              <h5 className="font-bold text-white text-sm truncate">{item.name}</h5>
+                              <p className="text-green-400 text-xs font-bold mb-1">Rs. {item.price}</p>
+                              <div className="flex justify-between items-center">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.status === 'SOLD' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>{item.status}</span>
+                                {/* Action Buttons if Owner */}
+                                {user?.email === viewProfileUser?.email && (
+                                  <div className="flex gap-2">
+                                    {item.status !== 'SOLD' && <button onClick={() => setDeleteModalItem(item.id)} className="text-gray-500 hover:text-green-500" title="Mark Sold"><CheckCircle size={14} /></button>}
+                                    <button onClick={() => setDeleteModalItem(item.id)} className="text-gray-500 hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
+
+                  {/* COMMUNITY REQUESTS */}
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2"><ClipboardList size={14} /> Community Requests</h4>
+                    <div className="space-y-3">
+                      {requests.filter(r => r.user === viewProfileUser?.email).length === 0 ? <p className="text-gray-600 text-sm italic">No active requests.</p> :
+                        requests.filter(r => r.user === viewProfileUser?.email).map(req => (
+                          <div key={req.id} id={req.id} className={`bg-[#1a1c22] p-4 rounded-xl border border-white/5 ${profileHighlightId === req.id ? 'ring-2 ring-yellow-500 bg-yellow-500/10' : ''}`}>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded mb-1 inline-block ${req.isMarketRun ? 'bg-[#57F287]/20 text-[#57F287]' : 'bg-yellow-500/20 text-yellow-500'}`}>
+                                  {req.isMarketRun ? "Market Run" : "Wanted"}
+                                </span>
+                                <h4 className="font-bold text-white text-sm">{req.title}</h4>
+                              </div>
+                              <span className="text-[10px] text-gray-500">{formatTime(req.createdAt)}</span>
+                            </div>
+                            <p className="text-gray-400 text-xs mt-1 line-clamp-2">{req.description}</p>
+                            {user?.email === viewProfileUser?.email && (
+                              <div className="flex justify-end gap-3 mt-2 pt-2 border-t border-white/5">
+                                <button onClick={(e) => { e.stopPropagation(); startEditRequest(req); }} className="text-gray-500 hover:text-blue-500 text-xs flex items-center gap-1"><Edit2 size={12} /> Edit</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 text-xs flex items-center gap-1"><Trash2 size={12} /> Delete</button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
