@@ -12,7 +12,7 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser
+  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty
 } from './firebaseFunctions';
 
 // --- REUSABLE PASSWORD COMPONENT ---
@@ -500,7 +500,7 @@ export default function App() {
       setActiveChat({
         id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
       });
-      // Mark as read is handled in useEffect of activeChat
+      sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
     }
   };
 
@@ -508,6 +508,7 @@ export default function App() {
     setActiveChat(item);
     // Mark as read immediately when opening
     markChatRead(item.id, user.email);
+    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
   };
 
   const handleSendChat = async (e) => {
@@ -574,7 +575,7 @@ export default function App() {
               <div className="p-4 bg-yellow-900/20 border border-yellow-500/20 rounded-xl">
                 <Clock className="mx-auto text-yellow-500 mb-2 animate-pulse" />
                 <h3 className="text-yellow-100 font-bold">Verification Pending</h3>
-                <p className="text-xs text-yellow-500/80 mt-1">We sent a link to {user.email}</p>
+                <p className="text-xs text-yellow-500/80 mt-1">We sent a link to {user.email} (Check Spam Folder)</p>
               </div>
               <p className="text-xs text-green-400 animate-pulse">Waiting for verification... (Auto-updates)</p>
               <button onClick={() => resendVerificationLink()} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">Resend Link</button>
@@ -584,7 +585,7 @@ export default function App() {
             <div className="space-y-4">
               <div className="text-center mb-4">
                 <h2 className="text-xl font-bold text-white">Reset Password</h2>
-                <p className="text-sm text-gray-400">Enter your email to receive a reset link.</p>
+                <p className="text-sm text-gray-400">Enter your email to receive a reset link. Check Spam Folder if not received.</p>
               </div>
               <form onSubmit={async (e) => {
                 e.preventDefault();
