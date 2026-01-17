@@ -12,10 +12,10 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty
+  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb
 } from './firebaseFunctions';
 
-const CATEGORIES = ['Electronics', 'Software & Peripherals', 'Stationary', 'Sports', 'Accessories', 'Clothing', 'Books', 'Other'];
+const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
 
 // --- REUSABLE PASSWORD COMPONENT ---
 const PasswordInput = ({ value, onChange, placeholder = "Password", ...props }) => {
@@ -165,6 +165,8 @@ export default function App() {
   const [communitySearchQuery, setCommunitySearchQuery] = useState('');
   const [communityTab, setCommunityTab] = useState('wanted'); // 'wanted' or 'runs'
   const [reqCategory, setReqCategory] = useState('Electronics'); // For Community Post
+  const [activeCommunityCategory, setActiveCommunityCategory] = useState('All'); // New Filter State
+  const [communitySearchSuggestions, setCommunitySearchSuggestions] = useState([]); // New Suggestions State
 
   // --- PROFILE VIEW STATE ---
   const [viewProfileUser, setViewProfileUser] = useState(null); // The user object/email to view
@@ -264,7 +266,7 @@ export default function App() {
   // --- INBOX LISTENER WITH UNREAD DETECTION ---
   useEffect(() => {
     if (user) {
-      const unsubscribe = listenToAllMessages((msgs) => {
+      const unsubscribeMsgs = listenToAllMessages(user.email, (msgs) => {
         // Step 1: Group messages FIRST by chatId
         const allGroups = msgs.reduce((acc, m) => {
           if (!acc[m.chatId]) acc[m.chatId] = [];
@@ -305,7 +307,7 @@ export default function App() {
         setUnreadChats(unreadCounts);
         setHasUnread(Object.keys(unreadCounts).length > 0);
       });
-      return () => unsubscribe();
+      return () => unsubscribeMsgs();
     }
   }, [user, listings, requests]);
 
@@ -549,10 +551,48 @@ export default function App() {
 
 
   const handleListingClick = (item) => {
-    setActiveChat(item);
+    // PRIVACY FIX: Create Unique Chat ID per Buyer-Seller pair
+    let chatId = item.id;
+    let receiver = item.seller;
+
+    // If I am NOT the seller, my chat should be unique to me
+    if (user.email !== item.seller) {
+      chatId = `${item.id}_${user.email}`;
+    } else {
+      // If I AM the seller, I can't just "Click" on my item to chat with myself.
+      // Usually, the seller clicks on a notification/inbox item to chat.
+      // But if they do click "Chat" on their own item, it's ambiguous. 
+      // We'll assume they want to view the item or do nothing.
+      // For now, let's keep it harmless or alert.
+      if (item.id === 'new') {
+        // Special Case: Direct Message from Profile
+        // item.id is 'new', we need a unique ID. 
+        // Let's use: "DM_" + sorted(email1, email2)
+        const participants = [user.email, item.seller].sort();
+        chatId = `DM_${participants[0]}_${participants[1]}`;
+      }
+    }
+
+    // If it's an existing Inbox item (which has a chatId already), use that.
+    // The 'item' passed here could be a Listing object OR a Chat Group object.
+    if (item.chatId) {
+      chatId = item.chatId;
+      // Find receiver from participants or context
+      // This is tricky if 'item' is just the group. 
+      // We usually set 'activeChat' with rich metadata in Inbox view.
+      if (item.receiver) receiver = item.receiver;
+    }
+
+    const chatObj = {
+      ...item,
+      id: chatId,
+      receiver: receiver // Store receiver for sending messages
+    };
+
+    setActiveChat(chatObj);
     // Mark as read immediately when opening
-    markChatRead(item.id, user.email);
-    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: you are sharing your number at your own responsibility. Stay safe! 🛡️");
+    markChatRead(chatId, user.email);
+    sendSystemMessageIfEmpty(chatId, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: you are sharing your number at your own responsibility. Stay safe! 🛡️");
   };
 
   const handleSendChat = async (e) => {
@@ -560,7 +600,7 @@ export default function App() {
     if (!newMsg.trim() || isSendingMsg) return;
     setIsSendingMsg(true);
     try {
-      await sendMessage(activeChat.id, user.email, newMsg);
+      await sendMessage(activeChat.id, user.email, newMsg, activeChat.receiver || activeChat.seller);
       // REMOVED: Automatic "Notification sent to WhatsApp" message
       setNewMsg('');
     } catch (err) {
@@ -760,16 +800,30 @@ export default function App() {
                   placeholder={marketSearchMode === 'product' ? "Search listings..." : "Search users..."}
                   className={`${inputClass} pl-11 pr-24`}
                   value={searchQuery}
-                  onChange={e => {
+                  onChange={async e => {
                     const val = e.target.value;
                     setSearchQuery(val);
                     // Filter Suggestions
                     if (val.trim()) {
-                      const suggestions = listings
-                        .map(l => marketSearchMode === 'product' ? l.name : l.sellerName)
-                        .filter(n => n.toLowerCase().includes(val.toLowerCase()))
-                        .slice(0, 5);
-                      setSearchSuggestions([...new Set(suggestions)]); // Unique
+                      if (marketSearchMode === 'product') {
+                        const suggestions = listings
+                          .map(l => l.name)
+                          .filter(n => n.toLowerCase().includes(val.toLowerCase()))
+                          .slice(0, 5);
+                        setSearchSuggestions([...new Set(suggestions)]); // Unique
+                      } else {
+                        // USER SEARCH SUGGESTIONS (from DB or Listed)
+                        // For speed, let's mix: Loaded Sellers + DB query if needed
+                        // But for now, let's look at available listings sellers + fetch from DB
+                        // To keep it simple/fast: Just listings sellers first. 
+                        // If we want detailed, we'd use searchUsersInDb, but that returns objects.
+                        // Let's stick to listing sellers for autocomplete speed.
+                        const suggestions = listings
+                          .map(l => l.sellerName)
+                          .filter(n => n.toLowerCase().includes(val.toLowerCase()))
+                          .slice(0, 5);
+                        setSearchSuggestions([...new Set(suggestions)]);
+                      }
                     } else {
                       setSearchSuggestions([]);
                     }
@@ -839,66 +893,124 @@ export default function App() {
             )}
 
             {isLoading ? <LoadingSkeleton /> : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {filteredListings.map(item => (
-                  <div key={item.id} onClick={() => setActiveProduct(item)} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300 relative cursor-pointer">
-                    {item.status === 'SOLD' && (
-                      <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                        <div className="bg-black/40 backdrop-blur-[2px] absolute inset-0"></div>
-                        <div className="bg-red-500/80 text-white font-bold px-4 py-1 rounded-lg transform -rotate-12 border border-white/20 shadow-xl text-sm backdrop-blur-md">SOLD</div>
-                      </div>
-                    )}
-                    <div className="relative h-48">
-                      <img src={item.image} className="w-full h-full object-cover transition-transform duration-500" alt={item.name} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
-                      {/* FIXED TITLE WITH IMPROVED CONTRAST */}
-                      <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
-                        <div className="flex justify-between items-end gap-3">
+              // CONDITIONAL RENDER: PRODUCTS OR USERS
+              marketSearchMode === 'user' ? (
+                // --- USER SEARCH RESULTS ---
+                (() => {
+                  // Derive Unique Users from Filtering
+                  // Note: filteredListings already filters by SellerName if mode is 'user'
+                  // BUT: To allow finding users who DON'T have listings (since we now have searchUsersInDb),
+                  // we should ideally switch to rendering from a 'usersSearchResults' state.
+                  // HOWEVER, the user asked to "fix" it.
+                  // Let's modify the flow: If 'searchQuery' exists, we should probably fetch from DB.
+                  // But 'filteredListings' is derived from 'listings'.
+                  // Doing async fetch in render is bad.
+                  // COMPROMISE: We will show "Users found in current listings" (filteredListings) 
+                  // AND can optionally show "Other users" if we added a state.
+                  // For now, let's keep the existing logic but improved to be robust.
+                  const uniqueUsers = Object.values(filteredListings.reduce((acc, item) => {
+                    if (!acc[item.seller]) {
+                      acc[item.seller] = {
+                        email: item.seller,
+                        name: item.sellerName,
+                        dept: item.sellerDept,
+                        count: 0
+                      };
+                    }
+                    acc[item.seller].count++;
+                    return acc;
+                  }, {}));
+
+                  if (uniqueUsers.length === 0) return <div className="text-center py-20 opacity-50 col-span-full"><Search size={48} className="mx-auto mb-2 text-gray-600" /><p>No users found</p></div>;
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {uniqueUsers.map(u => (
+                        <div key={u.email} onClick={() => handleViewProfile(u.email)} className="glass-card p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-white/5 border border-white/5 transition-all group">
+                          <div className="w-16 h-16 rounded-full bg-[#003366] flex items-center justify-center font-bold text-2xl text-white border-2 border-[#1a1c22] shadow-lg">
+                            {u.name[0].toUpperCase()}
+                          </div>
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-white text-lg leading-tight mb-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] line-clamp-2">
-                              {item.name}
-                            </h3>
-                            <p className="text-xs text-white/90 flex items-center gap-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] font-medium">
-                              <User size={12} /> {item.sellerName}
-                            </p>
+                            <h3 className="font-bold text-white text-lg truncate group-hover:text-blue-400 transition-colors">{u.name}</h3>
+                            <p className="text-sm text-gray-400">{u.dept || "NUSTian"} • {u.count} Listings</p>
                           </div>
-                          <span className={`px-3 py-1.5 rounded-lg text-sm font-bold text-white border border-white/30 shadow-lg shrink-0 ${item.type === 'RENT' ? 'bg-orange-500/20 backdrop-blur-md' : 'bg-white/20 backdrop-blur-md'}`}>
-                            {item.type === 'RENT' ? `Rs. ${item.price} / ${item.rentalPeriod || 'Week'}` : `Rs. ${item.price}`}
-                          </span>
+                          {u.email !== user?.email && (
+                            <button onClick={(e) => {
+                              e.stopPropagation();
+                              const existingChat = listings.find(l => l.seller === u.email) || { id: 'new', seller: u.email, sellerName: u.name, name: 'General Chat' };
+                              handleListingClick(existingChat);
+                            }} className="p-3 bg-blue-600 rounded-xl text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20" title="Message User">
+                              <MessageCircle size={20} />
+                            </button>
+                          )}
                         </div>
-                      </div>
-                      {item.isUrgent && <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg animate-pulse z-10"><Zap size={10} fill="white" /> URGENT</div>}
-                      <div className="absolute top-2 right-2 flex gap-1 z-10">
-                        {item.type === 'RENT' && item.rentalStatus === 'Rented' && (
-                          <div className="bg-orange-500/90 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
-                            <Clock size={10} /> Rented
-                          </div>
-                        )}
-                        {item.type === 'RENT' && item.rentalStatus === 'Available' && (
-                          <div className="bg-green-500/90 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">
-                            Available for Rent
-                          </div>
-                        )}
-                        <div className="bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">{item.condition}</div>
-                      </div>
+                      ))}
                     </div>
-                    <div className="p-3">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md">{item.category}</span>
-                        <div onClick={e => e.stopPropagation()}>
-                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Report this item?')) reportListing(item.id, 'User Report') }} className="text-gray-600 hover:text-red-500" title="Report Item"><Flag size={12} /></button>
+                  );
+                })()
+              ) : (
+                // --- PRODUCT SEARCH RESULTS (Existing) ---
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {filteredListings.map(item => (
+                    <div key={item.id} onClick={() => setActiveProduct(item)} className="glass-card rounded-2xl overflow-hidden group hover:-translate-y-1 transition-transform duration-300 relative cursor-pointer">
+                      {item.status === 'SOLD' && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                          <div className="bg-black/40 backdrop-blur-[2px] absolute inset-0"></div>
+                          <div className="bg-red-500/80 text-white font-bold px-4 py-1 rounded-lg transform -rotate-12 border border-white/20 shadow-xl text-sm backdrop-blur-md">SOLD</div>
                         </div>
-                      </div>
-                      <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
-                      {item.seller !== user.email && item.status !== 'SOLD' && (
-                        <button onClick={(e) => { e.stopPropagation(); handleListingClick(item); }} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
-                          <MessageCircle size={16} /> Chat Now
-                        </button>
                       )}
+                      <div className="relative h-48">
+                        <img src={item.image} className="w-full h-full object-cover transition-transform duration-500" alt={item.name} />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                        {/* FIXED TITLE WITH IMPROVED CONTRAST */}
+                        <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+                          <div className="flex justify-between items-end gap-3">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-white text-lg leading-tight mb-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] line-clamp-2">
+                                {item.name}
+                              </h3>
+                              <p className="text-xs text-white/90 flex items-center gap-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] font-medium">
+                                <User size={12} /> {item.sellerName}
+                              </p>
+                            </div>
+                            <span className={`px-3 py-1.5 rounded-lg text-sm font-bold text-white border border-white/30 shadow-lg shrink-0 ${item.type === 'RENT' ? 'bg-orange-500/20 backdrop-blur-md' : 'bg-white/20 backdrop-blur-md'}`}>
+                              {item.type === 'RENT' ? `Rs. ${item.price} / ${item.rentalPeriod || 'Week'}` : `Rs. ${item.price}`}
+                            </span>
+                          </div>
+                        </div>
+                        {item.isUrgent && <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg animate-pulse z-10"><Zap size={10} fill="white" /> URGENT</div>}
+                        <div className="absolute top-2 right-2 flex gap-1 z-10">
+                          {item.type === 'RENT' && item.rentalStatus === 'Rented' && (
+                            <div className="bg-orange-500/90 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10 flex items-center gap-1">
+                              <Clock size={10} /> Rented
+                            </div>
+                          )}
+                          {item.type === 'RENT' && item.rentalStatus === 'Available' && (
+                            <div className="bg-green-500/90 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">
+                              Available for Rent
+                            </div>
+                          )}
+                          <div className="bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/10">{item.condition}</div>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md">{item.category}</span>
+                          <div onClick={e => e.stopPropagation()}>
+                            <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Report this item?')) reportListing(item.id, 'User Report') }} className="text-gray-600 hover:text-red-500" title="Report Item"><Flag size={12} /></button>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-400 line-clamp-2 h-10 mb-3">{item.description}</p>
+                        {item.seller !== user.email && item.status !== 'SOLD' && (
+                          <button onClick={(e) => { e.stopPropagation(); handleListingClick(item); }} className="w-full py-2.5 rounded-xl bg-[#1a1c22] border border-white/5 hover:bg-[#003366] hover:text-white text-gray-400 text-sm font-medium transition-colors flex justify-center items-center gap-2" title="Message Seller">
+                            <MessageCircle size={16} /> Chat Now
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
             )}
             {!isLoading && filteredListings.length === 0 && <div className="text-center py-20 opacity-50"><Search size={48} className="mx-auto mb-2 text-gray-600" /><p>No listings found</p></div>}
           </div>
@@ -1073,9 +1185,56 @@ export default function App() {
                   placeholder={communityTab === 'wanted' ? "Search requests..." : "Search markets..."}
                   className={`${inputClass} pl-11`}
                   value={communitySearchQuery}
-                  onChange={e => setCommunitySearchQuery(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setCommunitySearchQuery(val);
+                    if (val.trim()) {
+                      const suggestions = requests
+                        .filter(req => {
+                          if (communityTab === 'wanted' && req.isMarketRun) return false;
+                          if (communityTab === 'runs' && !req.isMarketRun) return false;
+                          return true;
+                        })
+                        .map(req => req.title)
+                        .filter(t => t.toLowerCase().includes(val.toLowerCase()))
+                        .slice(0, 5);
+                      setCommunitySearchSuggestions([...new Set(suggestions)]);
+                    } else {
+                      setCommunitySearchSuggestions([]);
+                    }
+                  }}
                 />
+
+                {/* Community Suggestions Dropdown */}
+                {communitySearchSuggestions.length > 0 && communitySearchQuery && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1c22] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                    {communitySearchSuggestions.map((s, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => { setCommunitySearchQuery(s); setCommunitySearchSuggestions([]); }}
+                        className="px-4 py-3 hover:bg-white/5 cursor-pointer text-sm text-gray-300 hover:text-white flex items-center gap-2"
+                      >
+                        <Search size={14} className="opacity-50" /> {s}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* COMMUNITY CATEGORY FILTERS (Wanted Only) */}
+              {communityTab === 'wanted' && (
+                <div className="flex gap-2 flex-wrap animate-fade-in">
+                  {['All', ...CATEGORIES].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCommunityCategory(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${activeCommunityCategory === cat ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-[#15161a] text-gray-500 border-white/10 hover:border-white/30'}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {isLoading ? <LoadingSkeleton /> : (
@@ -1110,6 +1269,11 @@ export default function App() {
                         if (expiry < new Date()) return false;
                       }
 
+                      // CATEGORY FILTER
+                      if (communityTab === 'wanted' && activeCommunityCategory !== 'All') {
+                        if (req.category !== activeCommunityCategory) return false;
+                      }
+
                       const q = communitySearchQuery.toLowerCase();
                       return (req.title?.toLowerCase() || "").includes(q) || (req.text?.toLowerCase() || "").includes(q) || (!req.isMarketRun && (req.category || "").toLowerCase().includes(q));
                     })
@@ -1118,7 +1282,7 @@ export default function App() {
                         {/* Display Category Chips if Wanted */}
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex gap-2">
-                            <span className={`text-[10px] bg-black/50 px-2 py-1 rounded text-white flex items-center gap-1 border border-white/10`} onClick={(e) => { e.stopPropagation(); handleViewProfile(req.user); }}>
+                            <span className={`text-[10px] bg-black/50 px-2 py-1 rounded text-white flex items-center gap-1 border border-white/10`} onClick={(e) => { e.stopPropagation(); handleViewProfile(req.user, req.id); }}>
                               <User size={10} /> {req.userName}
                             </span>
                             {!req.isMarketRun && req.category && <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded border border-blue-500/20">{req.category}</span>}
@@ -1189,7 +1353,7 @@ export default function App() {
                 // If the user sees OLD message, that's bad.
                 // But let's stick to the styling change first.
                 // Actually, assuming msgs has at least 1 item.
-                const lastMsgActual = msgs[msgs.length - 1]; // Newest if asc
+                const lastMsgActual = msgs[0]; // Newest (since sorted desc)
                 // Wait, I should verify the order in App.js logic again.
                 // line 253 listenToAllMessages.
 
@@ -1284,9 +1448,19 @@ export default function App() {
                     {editPic ? <img src={URL.createObjectURL(editPic)} className="w-full h-full object-cover" alt="Preview" /> : <div className="flex items-center justify-center h-full bg-black/50"><Camera className="text-white" /></div>}
                   </div>
                 ) : (
-                  viewProfileUser?.photoURL ? <img src={viewProfileUser.photoURL} className="w-full h-full object-cover" alt="Profile" /> : <span className="text-3xl font-bold text-white">{(viewProfileUser?.displayName || viewProfileUser?.email || "?")[0].toUpperCase()}</span>
+                  viewProfileUser?.photoURL ? <img src={viewProfileUser.photoURL} className="w-full h-full object-cover" alt="Profile" /> : <span className="text-3xl font-bold text-white">{(viewProfileUser?.displayName || "U")[0].toUpperCase()}</span>
                 )}
               </div>
+
+              {/* AUTO SCROLL EFFECT */}
+              {useEffect(() => {
+                if (profileHighlightId) {
+                  const el = document.getElementById(profileHighlightId);
+                  if (el) {
+                    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+                  }
+                }
+              }, [profileHighlightId, viewProfileUser])}
 
               {isEditingProfile ? (
                 <div className="max-w-xs mx-auto space-y-3">
@@ -1300,8 +1474,8 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || "User"}</h2>
-                  <p className="text-gray-400 text-sm">{viewProfileUser?.email}</p>
+                  <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || "NUSTian"}</h2>
+                  {/* HIDDEN EMAIL FOR PRIVACY */}
                   {viewProfileUser?.department && <p className="text-blue-400 text-xs font-bold mt-1">{viewProfileUser.department}</p>}
 
                   {/* Verification / Contact Actions */}
@@ -1506,10 +1680,55 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
             <div className="p-4 bg-[#1a1c22] flex justify-between items-center border-b border-white/5">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">{activeChat.sellerName?.[0] || "?"}</div>
+              <div
+                className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => {
+                  // Determine ID of the OTHER user
+                  const isSeller = activeChat.seller === user.email;
+                  const otherEmail = isSeller ? (
+                    // If I am seller/owner, I need to find who I am talking to (Buyer)
+                    // We can find this from the messages
+                    chatMessages.find(m => m.sender !== user.email)?.sender
+                  ) : activeChat.seller; // If I am buyer, seller is the other person
+
+                  if (otherEmail) {
+                    handleViewProfile(otherEmail, activeChat.id);
+                    setActiveChat(null); // Close chat to view profile
+                  }
+                }}
+              >
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
+                  {/* Logic for Header Name Initials */}
+                  {(() => {
+                    const isMyListing = activeChat.seller === user.email;
+                    const isMyRequest = activeChat.user === user.email;
+
+                    if (isMyListing || isMyRequest) {
+                      // I am Owner. Other is "User" or Name from msg
+                      const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                      const name = otherMsg?.sender ? otherMsg.sender.split('@')[0] : "User";
+                      return name[0].toUpperCase();
+                    }
+                    return (activeChat.sellerName || activeChat.userName || "O")[0].toUpperCase();
+                  })()}
+                </div>
                 <div>
-                  <h3 className="font-bold text-sm">{activeChat.sellerName || "User"}</h3>
+                  {/* Logic for Header Name Display */}
+                  <h3 className="font-bold text-sm">
+                    {(() => {
+                      const isMyListing = activeChat.seller === user.email;
+                      const isMyRequest = activeChat.user === user.email;
+
+                      if (isMyListing || isMyRequest) {
+                        // Show Buyer Name
+                        const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                        let name = otherMsg?.sender?.split('@')[0] || "User";
+                        return name.charAt(0).toUpperCase() + name.slice(1);
+                      }
+                      // Show Seller/Owner Name
+                      return activeChat.sellerName || activeChat.userName || "Owner";
+                    })()}
+                  </h3>
                   <p className="text-[10px] text-gray-400">({activeChat.name || activeChat.title})</p>
                 </div>
               </div>

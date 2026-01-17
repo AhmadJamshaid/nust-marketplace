@@ -147,13 +147,15 @@ export const listenToRequests = (callback) => {
 };
 
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
-export const sendMessage = async (chatId, sender, text) => {
+export const sendMessage = async (chatId, sender, text, receiver) => {
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
   await addDoc(collection(db, 'messages'), {
     chatId,
     sender,
     text,
+    receiver, // Store receiver explicitely for easy reference
+    participants: [sender, receiver], // Array for "array-contains" queries
     createdAt: serverTimestamp(),
     clientTimestamp: timestamp.toISOString(),
     read: false
@@ -206,8 +208,15 @@ export const sendSystemMessageIfEmpty = async (chatId, text) => {
   }
 };
 
-export const listenToAllMessages = (callback) => {
-  const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+export const listenToAllMessages = (userEmail, callback) => {
+  // OPTIMIZED: Only fetch messages where I am a participant
+  // Requires: Firestore Composite Index or Single Field Index on 'participants'
+  const q = query(
+    collection(db, 'messages'),
+    where('participants', 'array-contains', userEmail),
+    orderBy('createdAt', 'desc')
+  );
+
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => {
       const data = d.data();
@@ -219,7 +228,7 @@ export const listenToAllMessages = (callback) => {
     });
     callback(messages);
   }, (error) => {
-    console.error("All messages listener error:", error);
+    console.error("All messages listener error (Please create Index in Console):", error);
     callback([]);
   });
 };
@@ -244,12 +253,24 @@ export const rateUser = async (targetUserEmail, ratingValue) => {
   }
 };
 
+export const searchUsersInDb = async (searchTerm) => {
+  const q = query(collection(db, 'users'), limit(50));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => d.data())
+    .filter(u =>
+      (u.username && u.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (u.displayName && u.displayName.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+};
+
 export const markChatRead = async (chatId, userEmail) => {
   // Query ALL messages in this chat (safer to avoid compound index issues with 'read' field)
   // We will filter client-side.
   const q = query(
     collection(db, 'messages'),
-    where('chatId', '==', chatId)
+    where('chatId', '==', chatId),
+    where('read', '==', false) // OPTIMIZATION: Only fetch unread
   );
 
   const snap = await getDocs(q);
