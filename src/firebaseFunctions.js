@@ -214,10 +214,12 @@ export const sendSystemMessageIfEmpty = async (chatId, text) => {
 };
 
 export const listenToAllMessages = (userEmail, callback) => {
-  // OPTIMIZED: Remove orderBy to avoid Composite Index requirement. Sort client-side.
+  // OPTIMIZED: Use array-contains-any to match EITHER legacy (mixed) OR new (lower) casing.
+  // This fixes "Missing Messages" and "Real-time Delay" by catching all variations.
+  const searchTerms = [...new Set([userEmail, userEmail.toLowerCase()])];
   const q = query(
     collection(db, 'messages'),
-    where('participants', 'array-contains', userEmail)
+    where('participants', 'array-contains-any', searchTerms)
   );
 
   return onSnapshot(q, (snap) => {

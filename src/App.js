@@ -1781,18 +1781,25 @@ export default function App() {
                       {(() => {
                         const isMyListing = activeChat.seller === user.email;
                         const isMyRequest = activeChat.user === user.email;
+                        let name = "User";
 
                         if (isMyListing || isMyRequest) {
                           // Show Buyer Name
                           const otherMsg = chatMessages.find(m => m.sender !== user.email);
-                          let name = otherMsg?.sender?.split('@')[0] || "User";
-                          return name.charAt(0).toUpperCase() + name.slice(1);
+                          name = otherMsg?.sender?.split('@')[0] || "User";
+                        } else {
+                          // Show Seller/Owner Name
+                          name = activeChat.sellerName || activeChat.userName || "Owner";
                         }
-                        // Show Seller/Owner Name
-                        return activeChat.sellerName || activeChat.userName || "Owner";
+
+                        // Capitalize
+                        name = name.charAt(0).toUpperCase() + name.slice(1);
+
+                        // Append Topic
+                        const topic = activeChat.name || activeChat.title || "Chat";
+                        return `${name} (${topic})`;
                       })()}
                     </h3>
-                    <p className="text-[10px] text-gray-400">({activeChat.name || activeChat.title})</p>
                   </div>
                 </div>
                 <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18} /></button>
