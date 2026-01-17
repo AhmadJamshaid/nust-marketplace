@@ -267,7 +267,7 @@ export default function App() {
   // --- INBOX LISTENER WITH UNREAD DETECTION ---
   useEffect(() => {
     if (user) {
-      const unsubscribeMsgs = listenToAllMessages(user.email, (msgs) => {
+      const unsubscribe = listenToAllMessages((msgs) => {
         // Step 1: Group messages FIRST by chatId
         const allGroups = msgs.reduce((acc, m) => {
           if (!acc[m.chatId]) acc[m.chatId] = [];
@@ -275,10 +275,20 @@ export default function App() {
           return acc;
         }, {});
 
-        // Step 2: Use Groups directly (Firestore Query guarantees relevance)
-        // Previous logic using isSeller/isRequester failed for Composite IDs.
-        // Since listenToAllMessages filters by 'participants', we can trust these messages belong to us.
-        const relevantGroups = allGroups;
+        // Step 2: Filter GROUPS based on relevance
+        const relevantGroups = {};
+        Object.keys(allGroups).forEach(chatId => {
+          const groupMsgs = allGroups[chatId];
+          const isSeller = listings.find(l => l.id === chatId)?.seller === user.email;
+          const isRequester = requests.find(r => r.id === chatId)?.user === user.email;
+          // IMPORTANT FIX: Also include if I have sent ANY message in this chat (Participant)
+          // This allows "Buyers" (who are not sellers/requesters) to see the chat and replies
+          const hasParticipated = groupMsgs.some(m => m.sender === user.email);
+
+          if (isSeller || isRequester || hasParticipated) {
+            relevantGroups[chatId] = groupMsgs;
+          }
+        });
 
         // Step 3: Set State
         setInboxGroups(relevantGroups);
@@ -298,9 +308,9 @@ export default function App() {
         setUnreadChats(unreadCounts);
         setHasUnread(Object.keys(unreadCounts).length > 0);
       });
-      return () => unsubscribeMsgs();
+      return () => unsubscribe();
     }
-  }, [user]);
+  }, [user, listings, requests]);
 
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {

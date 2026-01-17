@@ -213,15 +213,8 @@ export const sendSystemMessageIfEmpty = async (chatId, text) => {
   }
 };
 
-export const listenToAllMessages = (userEmail, callback) => {
-  // OPTIMIZED: Use array-contains-any to match EITHER legacy (mixed) OR new (lower) casing.
-  // This fixes "Missing Messages" and "Real-time Delay" by catching all variations.
-  const searchTerms = [...new Set([userEmail, userEmail.toLowerCase()])];
-  const q = query(
-    collection(db, 'messages'),
-    where('participants', 'array-contains-any', searchTerms)
-  );
-
+export const listenToAllMessages = (callback) => {
+  const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => {
       const data = d.data();
@@ -231,14 +224,6 @@ export const listenToAllMessages = (userEmail, callback) => {
         createdAt: data.createdAt || new Date(data.clientTimestamp)
       };
     });
-
-    // Client-side Sort (Descending for Inbox - Newest first)
-    messages.sort((a, b) => {
-      const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-      const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-      return timeB - timeA; // Descending
-    });
-
     callback(messages);
   }, (error) => {
     console.error("All messages listener error:", error);
