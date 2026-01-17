@@ -591,22 +591,20 @@ export default function App() {
     let chatId = item.id;
     let receiver = item.seller;
 
+    // Strict Case Insensitive Matching
+    const myEmail = user.email.toLowerCase();
+    const sellerEmail = item.seller.toLowerCase();
+
     // If I am NOT the seller, my chat should be unique to me
-    if (user.email !== item.seller) {
-      chatId = `${item.id}_${user.email}`;
+    if (myEmail !== sellerEmail) {
+      chatId = `${item.id}_${myEmail}`;
     } else {
       // If I AM the seller, I can't just "Click" on my item to chat with myself.
       // Usually, the seller clicks on a notification/inbox item to chat.
       // But if they do click "Chat" on their own item, it's ambiguous. 
-      // We'll assume they want to view the item or do nothing.
-      // For now, let's keep it harmless or alert.
-      if (item.id === 'new') {
-        // Special Case: Direct Message from Profile
-        // item.id is 'new', we need a unique ID. 
-        // Let's use: "DM_" + sorted(email1, email2)
-        const participants = [user.email, item.seller].sort();
-        chatId = `DM_${participants[0]}_${participants[1]}`;
-      }
+      // We will just open the 'General Chat' for that item (legacy behavior) or do nothing?
+      // Let's assume they want to see the general room or the last active chat?
+      // For now, keep as item.id
     }
 
     // If it's an existing Inbox item (which has a chatId already), use that.
@@ -636,8 +634,23 @@ export default function App() {
     if (!newMsg.trim() || isSendingMsg) return;
     setIsSendingMsg(true);
     try {
-      await sendMessage(activeChat.id, user.email, newMsg, activeChat.receiver || activeChat.seller);
-      // REMOVED: Automatic "Notification sent to WhatsApp" message
+      // Resolve Receiver:
+      // 1. Explicit receiver in activeChat (from Inbox/Listing click)
+      // 2. The 'Other' person in the chat history (if I am Seller replying)
+      // 3. Fallback to Seller (if I am Buyer starting new chat)
+      let targetEmail = activeChat.receiver;
+
+      if (!targetEmail || targetEmail.toLowerCase() === user.email.toLowerCase()) {
+        // Try to find the OTHER person from messages
+        const otherMsg = chatMessages.find(m => m.sender.toLowerCase() !== user.email.toLowerCase());
+        if (otherMsg) targetEmail = otherMsg.sender;
+        else targetEmail = activeChat.seller; // Fallback for new chat (User -> Seller)
+      }
+
+      // Safety: If still me, and I am seller, we have a problem. 
+      // But usually new chat is Buyer->Seller. 
+
+      await sendMessage(activeChat.id, user.email, newMsg, targetEmail);
       setNewMsg('');
     } catch (err) {
       console.error("Send message error:", err);
@@ -1777,13 +1790,13 @@ export default function App() {
                 </div>
               )}
               {chatMessages.map(m => (
-                <div key={m.id} className={`flex ${m.sender === user.email ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender === user.email ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
+                <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-start' : 'justify-end'}`}>
+                  <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
                     {m.text}
                     <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
                       {formatTime(m.createdAt)}
                       {/* Green Ticks for Sent Messages */}
-                      {m.sender === user.email && (
+                      {m.sender.toLowerCase() === user.email.toLowerCase() && (
                         <CheckCheck size={14} className={m.read ? "text-green-500 font-bold" : "text-gray-500"} />
                       )}
                     </div>

@@ -148,14 +148,19 @@ export const listenToRequests = (callback) => {
 
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
 export const sendMessage = async (chatId, sender, text, receiver) => {
-  // Use Date.now() for instant local timestamp, serverTimestamp for ordering
+  if (!text || !sender || !receiver) return;
   const timestamp = new Date();
+
+  // Normalize emails to lowercase to ensure matching
+  const senderLower = sender.toLowerCase();
+  const receiverLower = receiver.toLowerCase();
+
   await addDoc(collection(db, 'messages'), {
     chatId,
-    sender,
+    sender: senderLower,
     text,
-    receiver, // Store receiver explicitely for easy reference
-    participants: [sender, receiver], // Array for "array-contains" queries
+    receiver: receiverLower,
+    participants: [senderLower, receiverLower],
     createdAt: serverTimestamp(),
     clientTimestamp: timestamp.toISOString(),
     read: false
@@ -209,12 +214,10 @@ export const sendSystemMessageIfEmpty = async (chatId, text) => {
 };
 
 export const listenToAllMessages = (userEmail, callback) => {
-  // OPTIMIZED: Only fetch messages where I am a participant
-  // Requires: Firestore Composite Index or Single Field Index on 'participants'
+  // OPTIMIZED: Remove orderBy to avoid Composite Index requirement. Sort client-side.
   const q = query(
     collection(db, 'messages'),
-    where('participants', 'array-contains', userEmail),
-    orderBy('createdAt', 'desc')
+    where('participants', 'array-contains', userEmail.toLowerCase())
   );
 
   return onSnapshot(q, (snap) => {
@@ -226,9 +229,17 @@ export const listenToAllMessages = (userEmail, callback) => {
         createdAt: data.createdAt || new Date(data.clientTimestamp)
       };
     });
+
+    // Client-side Sort (Descending for Inbox - Newest first)
+    messages.sort((a, b) => {
+      const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+      const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+      return timeB - timeA; // Descending
+    });
+
     callback(messages);
   }, (error) => {
-    console.error("All messages listener error (Please create Index in Console):", error);
+    console.error("All messages listener error:", error);
     callback([]);
   });
 };
