@@ -275,20 +275,10 @@ export default function App() {
           return acc;
         }, {});
 
-        // Step 2: Filter GROUPS based on relevance
-        const relevantGroups = {};
-        Object.keys(allGroups).forEach(chatId => {
-          const groupMsgs = allGroups[chatId];
-          const isSeller = listings.find(l => l.id === chatId)?.seller === user.email;
-          const isRequester = requests.find(r => r.id === chatId)?.user === user.email;
-          // IMPORTANT FIX: Also include if I have sent ANY message in this chat (Participant)
-          // This allows "Buyers" (who are not sellers/requesters) to see the chat and replies
-          const hasParticipated = groupMsgs.some(m => m.sender === user.email);
-
-          if (isSeller || isRequester || hasParticipated) {
-            relevantGroups[chatId] = groupMsgs;
-          }
-        });
+        // Step 2: Use Groups directly (Firestore Query guarantees relevance)
+        // Previous logic using isSeller/isRequester failed for Composite IDs.
+        // Since listenToAllMessages filters by 'participants', we can trust these messages belong to us.
+        const relevantGroups = allGroups;
 
         // Step 3: Set State
         setInboxGroups(relevantGroups);
@@ -1370,9 +1360,17 @@ export default function App() {
                         </div>
 
                         {req.user === user.email && !editingReq && (
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-2 w-max">
                             <button onClick={(e) => { e.stopPropagation(); startEditRequest(req); }} className="text-gray-500 hover:text-blue-500 p-1" title="Edit Request"><Edit2 size={16} /></button>
                             <button onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }} className="text-gray-500 hover:text-red-500 p-1" title="Delete Request"><Trash2 size={16} /></button>
+                          </div>
+                        )}
+
+                        {req.user !== user.email && (
+                          <div className="mt-2 pt-2 border-t border-white/5 flex justify-end">
+                            <button onClick={(e) => { e.stopPropagation(); handleListingClick({ ...req, name: req.title }); }} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold shadow-lg shadow-blue-500/20 transition-all">
+                              <MessageCircle size={14} /> Chat
+                            </button>
                           </div>
                         )}
                       </div>
@@ -1613,224 +1611,230 @@ export default function App() {
         )}
       </div>
 
-      {activeProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md overflow-y-auto">
-          <div className="glass-card w-full max-w-2xl rounded-3xl overflow-hidden relative animate-slide-up my-auto max-h-[95vh] flex flex-col">
-            <button onClick={() => setActiveProduct(null)} className="absolute top-4 right-4 z-30 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors"><X size={20} /></button>
+      {
+        activeProduct && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md overflow-y-auto">
+            <div className="glass-card w-full max-w-2xl rounded-3xl overflow-hidden relative animate-slide-up my-auto max-h-[95vh] flex flex-col">
+              <button onClick={() => setActiveProduct(null)} className="absolute top-4 right-4 z-30 p-2 bg-black/50 hover:bg-black/80 text-white rounded-full transition-colors"><X size={20} /></button>
 
-            <div className="flex-1 overflow-y-auto scrollbar-hide">
-              {/* Image Gallery */}
-              <div className="h-72 sm:h-96 relative bg-black">
-                <img
-                  src={activeProduct.selectedImage || activeProduct.image}
-                  className="w-full h-full object-contain"
-                  alt={activeProduct.name}
-                />
-                {/* Thumbnails if multiple */}
-                {activeProduct.images && activeProduct.images.length > 1 && (
-                  <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 p-2">
-                    {activeProduct.images.map((img, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setActiveProduct({ ...activeProduct, selectedImage: img })}
-                        className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${activeProduct.selectedImage === img || (!activeProduct.selectedImage && idx === 0) ? 'border-blue-500 scale-110' : 'border-white/20 opacity-70'}`}
-                      >
-                        <img src={img} className="w-full h-full object-cover" alt={`Thumbnail ${idx + 1}`} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="p-6 space-y-6">
-                {/* Seller Info Section (Profile View Clone) */}
-                <div className="flex items-center gap-4 p-4 bg-[#1a1c22] rounded-2xl border border-white/5">
-                  <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xl text-white">
-                    {activeProduct.sellerName?.[0]}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-white">{activeProduct.sellerName}</h3>
-                    <p className="text-xs text-gray-400">{activeProduct.sellerDept || "NUSTian"} • Rep: {activeProduct.sellerReputation || 5.0} ⭐</p>
-                  </div>
-                  {/* OWNER CONTROLS FOR RENTAL */}
-                  {user.email === activeProduct.seller && activeProduct.type === 'RENT' && (
-                    <button onClick={() => setRentalModalItem(activeProduct)} className="px-3 py-1.5 bg-blue-600 rounded-lg text-xs font-bold text-white hover:bg-blue-500 mr-2">
-                      Manage Rental
-                    </button>
-                  )}
-                  {activeProduct.seller !== user.email && (
-                    <button onClick={() => { setActiveProduct(null); handleListingClick(activeProduct); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
-                      <MessageCircle size={16} /> Chat
-                    </button>
+              <div className="flex-1 overflow-y-auto scrollbar-hide">
+                {/* Image Gallery */}
+                <div className="h-72 sm:h-96 relative bg-black">
+                  <img
+                    src={activeProduct.selectedImage || activeProduct.image}
+                    className="w-full h-full object-contain"
+                    alt={activeProduct.name}
+                  />
+                  {/* Thumbnails if multiple */}
+                  {activeProduct.images && activeProduct.images.length > 1 && (
+                    <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 p-2">
+                      {activeProduct.images.map((img, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveProduct({ ...activeProduct, selectedImage: img })}
+                          className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${activeProduct.selectedImage === img || (!activeProduct.selectedImage && idx === 0) ? 'border-blue-500 scale-110' : 'border-white/20 opacity-70'}`}
+                        >
+                          <img src={img} className="w-full h-full object-cover" alt={`Thumbnail ${idx + 1}`} />
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
 
-                {/* Product Details */}
-                <div>
-                  <div className="flex justify-between items-start">
-                    <h2 className="text-3xl font-bold text-white mb-2">{activeProduct.name}</h2>
-                    {activeProduct.status === 'SOLD' ? (
-                      <span className="text-2xl font-bold text-red-500">SOLD</span>
-                    ) : (
-                      <span className="text-2xl font-bold text-green-400">Rs. {activeProduct.price}</span>
+                <div className="p-6 space-y-6">
+                  {/* Seller Info Section (Profile View Clone) */}
+                  <div className="flex items-center gap-4 p-4 bg-[#1a1c22] rounded-2xl border border-white/5">
+                    <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xl text-white">
+                      {activeProduct.sellerName?.[0]}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-white">{activeProduct.sellerName}</h3>
+                      <p className="text-xs text-gray-400">{activeProduct.sellerDept || "NUSTian"} • Rep: {activeProduct.sellerReputation || 5.0} ⭐</p>
+                    </div>
+                    {/* OWNER CONTROLS FOR RENTAL */}
+                    {user.email === activeProduct.seller && activeProduct.type === 'RENT' && (
+                      <button onClick={() => setRentalModalItem(activeProduct)} className="px-3 py-1.5 bg-blue-600 rounded-lg text-xs font-bold text-white hover:bg-blue-500 mr-2">
+                        Manage Rental
+                      </button>
+                    )}
+                    {activeProduct.seller !== user.email && (
+                      <button onClick={() => { setActiveProduct(null); handleListingClick(activeProduct); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
+                        <MessageCircle size={16} /> Chat
+                      </button>
                     )}
                   </div>
-                  <div className="flex gap-2 mb-4">
-                    <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.condition}</span>
-                    <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.category}</span>
-                    <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{formatTime(activeProduct.createdAt)}</span>
+
+                  {/* Product Details */}
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <h2 className="text-3xl font-bold text-white mb-2">{activeProduct.name}</h2>
+                      {activeProduct.status === 'SOLD' ? (
+                        <span className="text-2xl font-bold text-red-500">SOLD</span>
+                      ) : (
+                        <span className="text-2xl font-bold text-green-400">Rs. {activeProduct.price}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 mb-4">
+                      <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.condition}</span>
+                      <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{activeProduct.category}</span>
+                      <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300">{formatTime(activeProduct.createdAt)}</span>
+                    </div>
+                    <p className="text-gray-300 leading-relaxed text-sm">{activeProduct.description}</p>
                   </div>
-                  <p className="text-gray-300 leading-relaxed text-sm">{activeProduct.description}</p>
-                </div>
 
-                <div className="border-t border-white/10 my-4" />
+                  <div className="border-t border-white/10 my-4" />
 
-                {/* Related Products */}
-                <div>
-                  <h4 className="font-bold text-gray-400 mb-3 text-sm uppercase">Related Items</h4>
-                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                    {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).slice(0, 5).map(rel => (
-                      <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
-                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" alt={rel.name} /></div>
-                        <div className="p-2">
-                          <p className="text-xs font-bold text-white truncate">{rel.name}</p>
-                          <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
+                  {/* Related Products */}
+                  <div>
+                    <h4 className="font-bold text-gray-400 mb-3 text-sm uppercase">Related Items</h4>
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).slice(0, 5).map(rel => (
+                        <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
+                          <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" alt={rel.name} /></div>
+                          <div className="p-2">
+                            <p className="text-xs font-bold text-white truncate">{rel.name}</p>
+                            <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).length === 0 && <p className="text-xs text-gray-600">No related items.</p>}
+                      ))}
+                      {listings.filter(l => l.category === activeProduct.category && l.id !== activeProduct.id).length === 0 && <p className="text-xs text-gray-600">No related items.</p>}
+                    </div>
                   </div>
-                </div>
 
-                {/* Seller's Other Products */}
-                <div>
-                  <h4 className="font-bold text-gray-400 mb-3 text-sm uppercase">More from {activeProduct.sellerName}</h4>
-                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                    {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).slice(0, 5).map(rel => (
-                      <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
-                        <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" alt={rel.name} /></div>
-                        <div className="p-2">
-                          <p className="text-xs font-bold text-white truncate">{rel.name}</p>
-                          <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
+                  {/* Seller's Other Products */}
+                  <div>
+                    <h4 className="font-bold text-gray-400 mb-3 text-sm uppercase">More from {activeProduct.sellerName}</h4>
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).slice(0, 5).map(rel => (
+                        <div key={rel.id} onClick={() => setActiveProduct(rel)} className="min-w-[140px] bg-[#1a1c22] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-blue-500/30 transition-all">
+                          <div className="h-24"><img src={rel.image} className="w-full h-full object-cover" alt={rel.name} /></div>
+                          <div className="p-2">
+                            <p className="text-xs font-bold text-white truncate">{rel.name}</p>
+                            <p className="text-[10px] text-gray-400">Rs. {rel.price}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).length === 0 && <p className="text-xs text-gray-600">No other items.</p>}
+                      ))}
+                      {listings.filter(l => l.seller === activeProduct.seller && l.id !== activeProduct.id).length === 0 && <p className="text-xs text-gray-600">No other items.</p>}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {activeChat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
-            <div className="p-4 bg-[#1a1c22] flex justify-between items-center border-b border-white/5">
-              <div
-                className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
-                onClick={() => {
-                  // Determine ID of the OTHER user
-                  const isSeller = activeChat.seller === user.email;
-                  const otherEmail = isSeller ? (
-                    // If I am seller/owner, I need to find who I am talking to (Buyer)
-                    // We can find this from the messages
-                    chatMessages.find(m => m.sender !== user.email)?.sender
-                  ) : activeChat.seller; // If I am buyer, seller is the other person
+      {
+        activeChat && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
+              <div className="p-4 bg-[#1a1c22] flex justify-between items-center border-b border-white/5">
+                <div
+                  className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => {
+                    // Determine ID of the OTHER user
+                    const isSeller = activeChat.seller === user.email;
+                    const otherEmail = isSeller ? (
+                      // If I am seller/owner, I need to find who I am talking to (Buyer)
+                      // We can find this from the messages
+                      chatMessages.find(m => m.sender !== user.email)?.sender
+                    ) : activeChat.seller; // If I am buyer, seller is the other person
 
-                  if (otherEmail) {
-                    handleViewProfile(otherEmail, activeChat.id);
-                    setActiveChat(null); // Close chat to view profile
-                  }
-                }}
-              >
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
-                  {/* Logic for Header Name Initials */}
-                  {(() => {
-                    const isMyListing = activeChat.seller === user.email;
-                    const isMyRequest = activeChat.user === user.email;
-
-                    if (isMyListing || isMyRequest) {
-                      // I am Owner. Other is "User" or Name from msg
-                      const otherMsg = chatMessages.find(m => m.sender !== user.email);
-                      const name = otherMsg?.sender ? otherMsg.sender.split('@')[0] : "User";
-                      return name[0].toUpperCase();
+                    if (otherEmail) {
+                      handleViewProfile(otherEmail, activeChat.id);
+                      setActiveChat(null); // Close chat to view profile
                     }
-                    return (activeChat.sellerName || activeChat.userName || "O")[0].toUpperCase();
-                  })()}
-                </div>
-                <div>
-                  {/* Logic for Header Name Display */}
-                  <h3 className="font-bold text-sm">
+                  }}
+                >
+                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
+                    {/* Logic for Header Name Initials */}
                     {(() => {
                       const isMyListing = activeChat.seller === user.email;
                       const isMyRequest = activeChat.user === user.email;
 
                       if (isMyListing || isMyRequest) {
-                        // Show Buyer Name
+                        // I am Owner. Other is "User" or Name from msg
                         const otherMsg = chatMessages.find(m => m.sender !== user.email);
-                        let name = otherMsg?.sender?.split('@')[0] || "User";
-                        return name.charAt(0).toUpperCase() + name.slice(1);
+                        const name = otherMsg?.sender ? otherMsg.sender.split('@')[0] : "User";
+                        return name[0].toUpperCase();
                       }
-                      // Show Seller/Owner Name
-                      return activeChat.sellerName || activeChat.userName || "Owner";
+                      return (activeChat.sellerName || activeChat.userName || "O")[0].toUpperCase();
                     })()}
-                  </h3>
-                  <p className="text-[10px] text-gray-400">({activeChat.name || activeChat.title})</p>
-                </div>
-              </div>
-              <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {chatMessages.length === 0 && (
-                <div className="text-center text-gray-500 py-8">
-                  <MessageCircle size={48} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No messages yet. Start the conversation!</p>
-                </div>
-              )}
-              {chatMessages.map(m => (
-                <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
-                    {m.text}
-                    <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
-                      {formatTime(m.createdAt)}
-                      {/* Green Ticks for Sent Messages */}
-                      {m.sender.toLowerCase() === user.email.toLowerCase() && (
-                        <CheckCheck size={14} className={m.read ? "text-green-500 font-bold" : "text-gray-500"} />
-                      )}
-                    </div>
+                  </div>
+                  <div>
+                    {/* Logic for Header Name Display */}
+                    <h3 className="font-bold text-sm">
+                      {(() => {
+                        const isMyListing = activeChat.seller === user.email;
+                        const isMyRequest = activeChat.user === user.email;
+
+                        if (isMyListing || isMyRequest) {
+                          // Show Buyer Name
+                          const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                          let name = otherMsg?.sender?.split('@')[0] || "User";
+                          return name.charAt(0).toUpperCase() + name.slice(1);
+                        }
+                        // Show Seller/Owner Name
+                        return activeChat.sellerName || activeChat.userName || "Owner";
+                      })()}
+                    </h3>
+                    <p className="text-[10px] text-gray-400">({activeChat.name || activeChat.title})</p>
                   </div>
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
+                <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {chatMessages.length === 0 && (
+                  <div className="text-center text-gray-500 py-8">
+                    <MessageCircle size={48} className="mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No messages yet. Start the conversation!</p>
+                  </div>
+                )}
+                {chatMessages.map(m => (
+                  <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
+                      {m.text}
+                      <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
+                        {formatTime(m.createdAt)}
+                        {/* Green Ticks for Sent Messages */}
+                        {m.sender.toLowerCase() === user.email.toLowerCase() && (
+                          <CheckCheck size={14} className={m.read ? "text-green-500 font-bold" : "text-gray-500"} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2 border-t border-white/5">
+                <input value={newMsg} onChange={e => setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type a message..." />
+                <button disabled={isSendingMsg} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
+                  <Send size={18} />
+                </button>
+              </form>
             </div>
-            <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2 border-t border-white/5">
-              <input value={newMsg} onChange={e => setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type a message..." />
-              <button disabled={isSendingMsg} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
-                <Send size={18} />
-              </button>
-            </form>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {deleteModalItem && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-          <div className="bg-[#1a1c22] w-full max-w-sm rounded-3xl p-6 border border-white/10 shadow-2xl animate-slide-up">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="text-red-500" size={32} /></div>
-              <h3 className="text-xl font-bold text-white">Manage Listing</h3>
-              <p className="text-gray-400 text-sm mt-1">What would you like to do?</p>
-            </div>
-            <div className="space-y-3">
-              <button onClick={() => handleDeleteDecision('SOLD')} className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold flex items-center justify-center gap-2" title="Keep item but show as sold"><CheckCircle size={18} /> Mark as Sold</button>
-              <button onClick={() => handleDeleteDecision('DELETE')} className="w-full py-3.5 rounded-xl bg-[#252830] hover:bg-red-500/20 hover:text-red-400 text-gray-400 font-bold border border-white/5" title="Remove completely">Permanently Delete</button>
-              <button onClick={() => setDeleteModalItem(null)} className="w-full py-3 text-sm text-gray-500">Cancel</button>
+      {
+        deleteModalItem && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+            <div className="bg-[#1a1c22] w-full max-w-sm rounded-3xl p-6 border border-white/10 shadow-2xl animate-slide-up">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="text-red-500" size={32} /></div>
+                <h3 className="text-xl font-bold text-white">Manage Listing</h3>
+                <p className="text-gray-400 text-sm mt-1">What would you like to do?</p>
+              </div>
+              <div className="space-y-3">
+                <button onClick={() => handleDeleteDecision('SOLD')} className="w-full py-3.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold flex items-center justify-center gap-2" title="Keep item but show as sold"><CheckCircle size={18} /> Mark as Sold</button>
+                <button onClick={() => handleDeleteDecision('DELETE')} className="w-full py-3.5 rounded-xl bg-[#252830] hover:bg-red-500/20 hover:text-red-400 text-gray-400 font-bold border border-white/5" title="Remove completely">Permanently Delete</button>
+                <button onClick={() => setDeleteModalItem(null)} className="w-full py-3 text-sm text-gray-500">Cancel</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#15161a]/80 backdrop-blur-xl border border-white/10 p-1.5 rounded-full flex gap-1 shadow-2xl z-40">
         <NavBtn icon={ShoppingBag} active={view === 'market'} onClick={() => setView('market')} title="Marketplace" />
@@ -1841,36 +1845,38 @@ export default function App() {
       </div>
 
       {/* RENTAL STATUS MODAL */}
-      {rentalModalItem && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#1a1c22] rounded-2xl p-6 w-full max-w-sm border border-white/10 space-y-4">
-            <h3 className="text-xl font-bold text-white">Update Rental Status</h3>
-            <p className="text-gray-400 text-sm">Is "{rentalModalItem.name}" currently rented out?</p>
+      {
+        rentalModalItem && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-[#1a1c22] rounded-2xl p-6 w-full max-w-sm border border-white/10 space-y-4">
+              <h3 className="text-xl font-bold text-white">Update Rental Status</h3>
+              <p className="text-gray-400 text-sm">Is "{rentalModalItem.name}" currently rented out?</p>
 
-            <div className="flex gap-2">
-              <button onClick={() => setNewRentalDate('')} className={`flex-1 py-2 rounded-lg font-bold border ${!newRentalDate ? 'bg-green-500/20 border-green-500 text-green-500' : 'border-white/10 text-gray-500'}`}>
-                Available
-              </button>
-              <button onClick={() => setNewRentalDate(new Date().toISOString().split('T')[0])} className={`flex-1 py-2 rounded-lg font-bold border ${newRentalDate ? 'bg-orange-500/20 border-orange-500 text-orange-500' : 'border-white/10 text-gray-500'}`}>
-                Rented
-              </button>
-            </div>
-
-            {newRentalDate && (
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Rented Until:</p>
-                <input type="date" value={newRentalDate} onChange={e => setNewRentalDate(e.target.value)} className={inputClass} />
+              <div className="flex gap-2">
+                <button onClick={() => setNewRentalDate('')} className={`flex-1 py-2 rounded-lg font-bold border ${!newRentalDate ? 'bg-green-500/20 border-green-500 text-green-500' : 'border-white/10 text-gray-500'}`}>
+                  Available
+                </button>
+                <button onClick={() => setNewRentalDate(new Date().toISOString().split('T')[0])} className={`flex-1 py-2 rounded-lg font-bold border ${newRentalDate ? 'bg-orange-500/20 border-orange-500 text-orange-500' : 'border-white/10 text-gray-500'}`}>
+                  Rented
+                </button>
               </div>
-            )}
 
-            <div className="flex gap-2 pt-2">
-              <button onClick={handleUpdateRental} className="flex-1 py-2 bg-blue-600 rounded-xl font-bold text-white">Save Update</button>
-              <button onClick={() => { setRentalModalItem(null); setNewRentalDate(''); }} className="flex-1 py-2 bg-gray-700 rounded-xl font-bold text-white">Cancel</button>
+              {newRentalDate && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Rented Until:</p>
+                  <input type="date" value={newRentalDate} onChange={e => setNewRentalDate(e.target.value)} className={inputClass} />
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleUpdateRental} className="flex-1 py-2 bg-blue-600 rounded-xl font-bold text-white">Save Update</button>
+                <button onClick={() => { setRentalModalItem(null); setNewRentalDate(''); }} className="flex-1 py-2 bg-gray-700 rounded-xl font-bold text-white">Cancel</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
 

@@ -217,7 +217,7 @@ export const listenToAllMessages = (userEmail, callback) => {
   // OPTIMIZED: Remove orderBy to avoid Composite Index requirement. Sort client-side.
   const q = query(
     collection(db, 'messages'),
-    where('participants', 'array-contains', userEmail.toLowerCase())
+    where('participants', 'array-contains', userEmail)
   );
 
   return onSnapshot(q, (snap) => {
