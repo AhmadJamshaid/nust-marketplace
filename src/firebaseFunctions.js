@@ -255,7 +255,7 @@ export const rateUser = async (targetUserEmail, ratingValue) => {
 
 
 export const getAllUsers = async (limitCount = 50) => {
-  const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(limitCount));
+
   // If 'createdAt' index is missing, it might fail. Fallback without sort if needed.
   // Actually, let's just use limit for robustness first, or sort by username?
   // Sorting by username is weird if no full index. 
