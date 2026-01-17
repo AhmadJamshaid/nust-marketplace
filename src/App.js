@@ -300,7 +300,7 @@ export default function App() {
       });
       return () => unsubscribeMsgs();
     }
-  }, [user, listings, requests]);
+  }, [user]);
 
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
@@ -1385,7 +1385,9 @@ export default function App() {
             <h2 className="text-xl font-bold">Messages</h2>
             {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
               Object.keys(inboxGroups).map(id => {
-                const chatItem = listings.find(l => l.id === id) || requests.find(r => r.id === id);
+                // FIX: Chat ID can be composite "itemId_buyerEmail". extract real ID.
+                const realId = id.split('_')[0];
+                const chatItem = listings.find(l => l.id === realId) || requests.find(r => r.id === realId);
                 const msgs = inboxGroups[id];
 
                 // Wait, listenToAllMessages callback: "messages" sorted? 
