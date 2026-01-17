@@ -584,49 +584,22 @@ export default function App() {
     }
   };
 
+  const handleRequestClick = (req) => {
+    if (req.user !== user.email) {
+      setActiveChat({
+        id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
+      });
+      sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
+    }
+  };
+
 
 
   const handleListingClick = (item) => {
-    // PRIVACY FIX: Create Unique Chat ID per Buyer-Seller pair
-    let chatId = item.id;
-    let receiver = item.seller;
-
-    // Strict Case Insensitive Matching
-    const myEmail = user.email.toLowerCase();
-    const sellerEmail = item.seller.toLowerCase();
-
-    // If I am NOT the seller, my chat should be unique to me
-    if (myEmail !== sellerEmail) {
-      chatId = `${item.id}_${myEmail}`;
-    } else {
-      // If I AM the seller, I can't just "Click" on my item to chat with myself.
-      // Usually, the seller clicks on a notification/inbox item to chat.
-      // But if they do click "Chat" on their own item, it's ambiguous. 
-      // We will just open the 'General Chat' for that item (legacy behavior) or do nothing?
-      // Let's assume they want to see the general room or the last active chat?
-      // For now, keep as item.id
-    }
-
-    // If it's an existing Inbox item (which has a chatId already), use that.
-    // The 'item' passed here could be a Listing object OR a Chat Group object.
-    if (item.chatId) {
-      chatId = item.chatId;
-      // Find receiver from participants or context
-      // This is tricky if 'item' is just the group. 
-      // We usually set 'activeChat' with rich metadata in Inbox view.
-      if (item.receiver) receiver = item.receiver;
-    }
-
-    const chatObj = {
-      ...item,
-      id: chatId,
-      receiver: receiver // Store receiver for sending messages
-    };
-
-    setActiveChat(chatObj);
+    setActiveChat(item);
     // Mark as read immediately when opening
-    markChatRead(chatId, user.email);
-    sendSystemMessageIfEmpty(chatId, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: you are sharing your number at your own responsibility. Stay safe! 🛡️");
+    markChatRead(item.id, user.email);
+    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
   };
 
   const handleSendChat = async (e) => {
@@ -634,23 +607,8 @@ export default function App() {
     if (!newMsg.trim() || isSendingMsg) return;
     setIsSendingMsg(true);
     try {
-      // Resolve Receiver:
-      // 1. Explicit receiver in activeChat (from Inbox/Listing click)
-      // 2. The 'Other' person in the chat history (if I am Seller replying)
-      // 3. Fallback to Seller (if I am Buyer starting new chat)
-      let targetEmail = activeChat.receiver;
-
-      if (!targetEmail || targetEmail.toLowerCase() === user.email.toLowerCase()) {
-        // Try to find the OTHER person from messages
-        const otherMsg = chatMessages.find(m => m.sender.toLowerCase() !== user.email.toLowerCase());
-        if (otherMsg) targetEmail = otherMsg.sender;
-        else targetEmail = activeChat.seller; // Fallback for new chat (User -> Seller)
-      }
-
-      // Safety: If still me, and I am seller, we have a problem. 
-      // But usually new chat is Buyer->Seller. 
-
-      await sendMessage(activeChat.id, user.email, newMsg, targetEmail);
+      await sendMessage(activeChat.id, user.email, newMsg);
+      // REMOVED: Automatic "Notification sent to WhatsApp" message
       setNewMsg('');
     } catch (err) {
       console.error("Send message error:", err);
@@ -1327,7 +1285,7 @@ export default function App() {
                       return (req.title?.toLowerCase() || "").includes(q) || (req.text?.toLowerCase() || "").includes(q) || (!req.isMarketRun && (req.category || "").toLowerCase().includes(q));
                     })
                     .map(req => (
-                      <div key={req.id} onClick={() => handleListingClick({ ...req, name: req.title })} className="glass-card p-4 rounded-xl cursor-pointer hover:bg-white/5 transition-all group relative border border-white/5 shadow-md">
+                      <div key={req.id} onClick={() => handleRequestClick(req)} className="glass-card p-4 rounded-xl cursor-pointer hover:bg-white/5 transition-all group relative border border-white/5 shadow-md">
                         {/* Display Category Chips if Wanted */}
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex gap-2">
@@ -1378,7 +1336,7 @@ export default function App() {
 
                         {req.user !== user.email && (
                           <div className="mt-2 pt-2 border-t border-white/5 flex justify-end">
-                            <button onClick={(e) => { e.stopPropagation(); handleListingClick({ ...req, name: req.title }); }} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold shadow-lg shadow-blue-500/20 transition-all">
+                            <button onClick={(e) => { e.stopPropagation(); handleRequestClick(req); }} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold shadow-lg shadow-blue-500/20 transition-all">
                               <MessageCircle size={14} /> Chat
                             </button>
                           </div>

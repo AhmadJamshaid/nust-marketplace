@@ -147,20 +147,13 @@ export const listenToRequests = (callback) => {
 };
 
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
-export const sendMessage = async (chatId, sender, text, receiver) => {
-  if (!text || !sender || !receiver) return;
+export const sendMessage = async (chatId, sender, text) => {
+  // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
-
-  // Normalize emails to lowercase to ensure matching
-  const senderLower = sender.toLowerCase();
-  const receiverLower = receiver.toLowerCase();
-
   await addDoc(collection(db, 'messages'), {
     chatId,
-    sender: senderLower,
+    sender,
     text,
-    receiver: receiverLower,
-    participants: [senderLower, receiverLower],
     createdAt: serverTimestamp(),
     clientTimestamp: timestamp.toISOString(),
     read: false
@@ -286,8 +279,7 @@ export const markChatRead = async (chatId, userEmail) => {
   // We will filter client-side.
   const q = query(
     collection(db, 'messages'),
-    where('chatId', '==', chatId),
-    where('read', '==', false) // OPTIMIZATION: Only fetch unread
+    where('chatId', '==', chatId)
   );
 
   const snap = await getDocs(q);
