@@ -367,6 +367,19 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // --- AUTO SCROLL EFFECT (MOVED TO TOP LEVEL) ---
+  useEffect(() => {
+    if (view === 'profile' && profileHighlightId) {
+      // Need a slight delay for render
+      setTimeout(() => {
+        const el = document.getElementById(profileHighlightId);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    }
+  }, [view, profileHighlightId, viewProfileUser]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -1453,14 +1466,7 @@ export default function App() {
               </div>
 
               {/* AUTO SCROLL EFFECT */}
-              {useEffect(() => {
-                if (profileHighlightId) {
-                  const el = document.getElementById(profileHighlightId);
-                  if (el) {
-                    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
-                  }
-                }
-              }, [profileHighlightId, viewProfileUser])}
+
 
               {isEditingProfile ? (
                 <div className="max-w-xs mx-auto space-y-3">
