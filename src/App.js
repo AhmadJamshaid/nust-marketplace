@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
-  MessageCircle, X, Mail, Camera, Eye, EyeOff,
-  Search, Sliders,
-  Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
+  MessageCircle, X, Mail, Star, Camera, Eye, EyeOff,
+  Search, Sliders, AlertTriangle,
+  Zap, Clock, Truck, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
 } from 'lucide-react';
 import {
   authStateListener, logoutUser, loginWithUsername, signUpUser,
@@ -546,7 +546,14 @@ export default function App() {
     }
   };
 
-
+  const handleRequestClick = (req) => {
+    if (req.user !== user.email) {
+      setActiveChat({
+        id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
+      });
+      sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: you are sharing your number at your own responsibility. Stay safe! 🛡️");
+    }
+  };
 
   const handleListingClick = (item) => {
     setActiveChat(item);
@@ -1176,7 +1183,7 @@ export default function App() {
               Object.keys(inboxGroups).map(id => {
                 const chatItem = listings.find(l => l.id === id) || requests.find(r => r.id === id);
                 const msgs = inboxGroups[id];
-
+                const lastMessage = msgs[0]; // Assuming sorted desc? NO, listenToAllMessages sorts? 
                 // Wait, listenToAllMessages callback: "messages" sorted? 
                 // In listenToAllMessages: "messages.sort" (ascending time).
                 // But in inboxGroups map, I usually want descending time for list?
