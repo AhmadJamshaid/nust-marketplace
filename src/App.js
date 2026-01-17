@@ -381,6 +381,16 @@ export default function App() {
     }
   }, [view, profileHighlightId, viewProfileUser]);
 
+  // --- USER SEARCH: DEFAULT FETCH (MOVED TO TOP LEVEL) ---
+  useEffect(() => {
+    if (marketSearchMode === 'user' && !searchQuery.trim()) {
+      getAllUsers().then(users => {
+        if (user) users = users.filter(u => u.email !== user.email);
+        setUserSearchResults(users);
+      });
+    }
+  }, [marketSearchMode, searchQuery, user]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -914,15 +924,7 @@ export default function App() {
               </div>
             )}
 
-            {/* USER SEARCH: EMPTY STATE (ALL USERS) */}
-            {useEffect(() => {
-              if (marketSearchMode === 'user' && !searchQuery.trim()) {
-                getAllUsers().then(users => {
-                  if (user) users = users.filter(u => u.email !== user.email);
-                  setUserSearchResults(users);
-                });
-              }
-            }, [marketSearchMode, searchQuery, user])}
+
 
             {isLoading ? <LoadingSkeleton /> : (
               // CONDITIONAL RENDER: PRODUCTS OR USERS
