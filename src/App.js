@@ -12,7 +12,7 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb
+  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
@@ -914,6 +914,16 @@ export default function App() {
               </div>
             )}
 
+            {/* USER SEARCH: EMPTY STATE (ALL USERS) */}
+            {useEffect(() => {
+              if (marketSearchMode === 'user' && !searchQuery.trim()) {
+                getAllUsers().then(users => {
+                  if (user) users = users.filter(u => u.email !== user.email);
+                  setUserSearchResults(users);
+                });
+              }
+            }, [marketSearchMode, searchQuery, user])}
+
             {isLoading ? <LoadingSkeleton /> : (
               // CONDITIONAL RENDER: PRODUCTS OR USERS
               marketSearchMode === 'user' ? (
@@ -921,9 +931,9 @@ export default function App() {
                 (() => {
                   let displayUsers = [];
 
-                  if (searchQuery.trim()) {
-                    // CASE 1: SEARCHING -> Show DB Results (userSearchResults)
-                    // Ensure robust field fallback
+                  if (searchQuery.trim() || userSearchResults.length > 0) {
+                    // CASE 1: SEARCHING OR BROWSING (DB Results)
+                    // If searchQuery is empty, userSearchResults has 'All Users' from useEffect
                     displayUsers = userSearchResults.map(u => ({
                       email: u.email,
                       name: u.displayName || u.username || "User",
@@ -932,24 +942,8 @@ export default function App() {
                       count: u.reputation ? `${u.reputation} ⭐` : "New"
                     }));
                   } else {
-                    // CASE 2: BROWSING -> Show Active Sellers from Listings
-                    const uniqueSellers = Object.values(filteredListings.reduce((acc, item) => {
-                      // Filter out MYSELF from browsing too
-                      if (item.seller === user.email) return acc;
-
-                      if (!acc[item.seller]) {
-                        acc[item.seller] = {
-                          email: item.seller,
-                          name: item.sellerName,
-                          dept: item.sellerDept,
-                          photoURL: null, // Listings don't have this, maybe we can fetch?
-                          count: 0
-                        };
-                      }
-                      acc[item.seller].count++;
-                      return acc;
-                    }, {}));
-                    displayUsers = uniqueSellers.map(u => ({ ...u, count: `${u.count} items` }));
+                    // FALLBACK: If DB fetch hasn't finished or failed, show Loading or Empty
+                    displayUsers = [];
                   }
 
                   if (displayUsers.length === 0) return <div className="text-center py-20 opacity-50 col-span-full"><Search size={48} className="mx-auto mb-2 text-gray-600" /><p>{searchQuery ? "No users found" : "No active sellers"}</p></div>;
@@ -1495,10 +1489,17 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || "NUSTian"}</h2>
-                  {/* HIDDEN EMAIL FOR PRIVACY */}
+                  <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || viewProfileUser?.username || "User"}</h2>
+                  <p className="text-gray-400 text-sm hidden">{viewProfileUser?.email}</p>
+                  {/* EMAIL HIDDEN globally. Only show Department/Reputation */}
                   {viewProfileUser?.department && <p className="text-blue-400 text-xs font-bold mt-1">{viewProfileUser.department}</p>}
-
+                  <div className="flex justify-center gap-1 mt-2 mb-4">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      // Placeholder for star rating logic
+                      // <Star key={star} size={16} className={`text-yellow-400 ${star <= (viewProfileUser?.reputation || 0) ? 'fill-current' : ''}`} />
+                      null
+                    ))}
+                  </div>
                   {/* Verification / Contact Actions */}
                   {viewProfileUser?.email !== user?.email && (
                     <div className="flex justify-center gap-3 mt-4">
