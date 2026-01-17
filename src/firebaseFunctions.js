@@ -265,6 +265,13 @@ export const getAllUsers = async (limitCount = 50) => {
   return snap.docs.map(d => d.data());
 };
 
+export const getUserProfile = async (email) => {
+  const q = query(collection(db, 'users'), where('email', '==', email), limit(1));
+  const snap = await getDocs(q);
+  if (!snap.empty) return snap.docs[0].data();
+  return null;
+};
+
 export const searchUsersInDb = async (searchTerm) => {
   const q = query(collection(db, 'users'), limit(50));
   const snap = await getDocs(q);

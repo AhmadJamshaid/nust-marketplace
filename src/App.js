@@ -12,7 +12,7 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers
+  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers, getUserProfile
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
@@ -350,14 +350,26 @@ export default function App() {
         profileData = user;
       } else {
         // Fetch public profile
-        // Optimisation: Check if we have it in listings?
-        const found = listings.find(l => l.seller === email);
-        if (found) {
-          profileData = { email: found.seller, displayName: found.sellerName, photoURL: null }; // Basic info
-        } else {
-          // Fallback or fetch from DB if we had a users collection index
-          profileData = { email, displayName: email.split('@')[0], photoURL: null };
+        setIsLoading(true);
+        try {
+          const fetched = await getUserProfile(email);
+          if (fetched) {
+            profileData = fetched;
+          } else {
+            // Fallback: Check listings if DB fetch fails/empty
+            const found = listings.find(l => l.seller === email);
+            if (found) {
+              profileData = { email: found.seller, displayName: found.sellerName, photoURL: null };
+            } else {
+              // Last Resort: Username-like fallback (never show raw email)
+              profileData = { email, displayName: email.split('@')[0], photoURL: null };
+            }
+          }
+        } catch (e) {
+          console.error("Profile fetch error", e);
+          profileData = { email, displayName: "User", photoURL: null };
         }
+        setIsLoading(false);
       }
     }
 
@@ -1492,7 +1504,6 @@ export default function App() {
               ) : (
                 <>
                   <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || viewProfileUser?.username || "User"}</h2>
-                  <p className="text-gray-400 text-sm hidden">{viewProfileUser?.email}</p>
                   {/* EMAIL HIDDEN globally. Only show Department/Reputation */}
                   {viewProfileUser?.department && <p className="text-blue-400 text-xs font-bold mt-1">{viewProfileUser.department}</p>}
                   <div className="flex justify-center gap-1 mt-2 mb-4">
