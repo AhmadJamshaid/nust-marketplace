@@ -825,17 +825,20 @@ export default function App() {
                           .slice(0, 5);
                         setSearchSuggestions([...new Set(suggestions)]); // Unique
                       } else {
-                        // USER SEARCH SUGGESTIONS (from DB or Listed)
-                        // For speed, let's mix: Loaded Sellers + DB query if needed
-                        // But for now, let's look at available listings sellers + fetch from DB
-                        // To keep it simple/fast: Just listings sellers first. 
-                        // If we want detailed, we'd use searchUsersInDb, but that returns objects.
-                        // Let's stick to listing sellers for autocomplete speed.
-                        const suggestions = listings
+                        // USER SEARCH SUGGESTIONS (Combined: Local + DB)
+                        const localSuggestions = listings
                           .map(l => l.sellerName)
-                          .filter(n => n.toLowerCase().includes(val.toLowerCase()))
-                          .slice(0, 5);
-                        setSearchSuggestions([...new Set(suggestions)]);
+                          .filter(n => n.toLowerCase().includes(val.toLowerCase()));
+
+                        // Fetch from DB
+                        let dbSuggestions = [];
+                        try {
+                          const dbUsers = await searchUsersInDb(val);
+                          dbSuggestions = dbUsers.map(u => u.displayName || u.username);
+                        } catch (err) { console.error(err); }
+
+                        const combined = [...new Set([...localSuggestions, ...dbSuggestions])].slice(0, 5);
+                        setSearchSuggestions(combined);
                       }
                     } else {
                       setSearchSuggestions([]);
