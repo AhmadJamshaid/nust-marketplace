@@ -167,6 +167,7 @@ export default function App() {
   const [reqCategory, setReqCategory] = useState('Electronics'); // For Community Post
   const [activeCommunityCategory, setActiveCommunityCategory] = useState('All'); // New Filter State
   const [communitySearchSuggestions, setCommunitySearchSuggestions] = useState([]); // New Suggestions State
+  const [userSearchResults, setUserSearchResults] = useState([]); // Search Results from DB
 
   // --- PROFILE VIEW STATE ---
   const [viewProfileUser, setViewProfileUser] = useState(null); // The user object/email to view
@@ -816,7 +817,7 @@ export default function App() {
                   onChange={async e => {
                     const val = e.target.value;
                     setSearchQuery(val);
-                    // Filter Suggestions
+                    // Filter Suggestions & Results
                     if (val.trim()) {
                       if (marketSearchMode === 'product') {
                         const suggestions = listings
@@ -825,23 +826,28 @@ export default function App() {
                           .slice(0, 5);
                         setSearchSuggestions([...new Set(suggestions)]); // Unique
                       } else {
-                        // USER SEARCH SUGGESTIONS (Combined: Local + DB)
+                        // USER SEARCH MODE
+                        // 1. Suggestions (Seller Names + DB Names)
                         const localSuggestions = listings
                           .map(l => l.sellerName)
                           .filter(n => n.toLowerCase().includes(val.toLowerCase()));
 
-                        // Fetch from DB
-                        let dbSuggestions = [];
+                        let dbUsers = [];
                         try {
-                          const dbUsers = await searchUsersInDb(val);
-                          dbSuggestions = dbUsers.map(u => u.displayName || u.username);
+                          // 2. Fetch Actual User Objects for Results
+                          dbUsers = await searchUsersInDb(val);
+                          // Filter out MYSELF
+                          if (user) dbUsers = dbUsers.filter(u => u.email !== user.email);
+                          setUserSearchResults(dbUsers);
                         } catch (err) { console.error(err); }
 
-                        const combined = [...new Set([...localSuggestions, ...dbSuggestions])].slice(0, 5);
+                        const dbNames = dbUsers.map(u => u.displayName || u.username);
+                        const combined = [...new Set([...localSuggestions, ...dbNames])].slice(0, 5);
                         setSearchSuggestions(combined);
                       }
                     } else {
                       setSearchSuggestions([]);
+                      setUserSearchResults([]);
                     }
                   }}
                 />
@@ -913,52 +919,58 @@ export default function App() {
               marketSearchMode === 'user' ? (
                 // --- USER SEARCH RESULTS ---
                 (() => {
-                  // Derive Unique Users from Filtering
-                  // Note: filteredListings already filters by SellerName if mode is 'user'
-                  // BUT: To allow finding users who DON'T have listings (since we now have searchUsersInDb),
-                  // we should ideally switch to rendering from a 'usersSearchResults' state.
-                  // HOWEVER, the user asked to "fix" it.
-                  // Let's modify the flow: If 'searchQuery' exists, we should probably fetch from DB.
-                  // But 'filteredListings' is derived from 'listings'.
-                  // Doing async fetch in render is bad.
-                  // COMPROMISE: We will show "Users found in current listings" (filteredListings) 
-                  // AND can optionally show "Other users" if we added a state.
-                  // For now, let's keep the existing logic but improved to be robust.
-                  const uniqueUsers = Object.values(filteredListings.reduce((acc, item) => {
-                    if (!acc[item.seller]) {
-                      acc[item.seller] = {
-                        email: item.seller,
-                        name: item.sellerName,
-                        dept: item.sellerDept,
-                        count: 0
-                      };
-                    }
-                    acc[item.seller].count++;
-                    return acc;
-                  }, {}));
+                  let displayUsers = [];
 
-                  if (uniqueUsers.length === 0) return <div className="text-center py-20 opacity-50 col-span-full"><Search size={48} className="mx-auto mb-2 text-gray-600" /><p>No users found</p></div>;
+                  if (searchQuery.trim()) {
+                    // CASE 1: SEARCHING -> Show DB Results (userSearchResults)
+                    // Ensure robust field fallback
+                    displayUsers = userSearchResults.map(u => ({
+                      email: u.email,
+                      name: u.displayName || u.username || "User",
+                      dept: u.department || "NUSTian",
+                      photoURL: u.photoURL,
+                      count: u.reputation ? `${u.reputation} ⭐` : "New"
+                    }));
+                  } else {
+                    // CASE 2: BROWSING -> Show Active Sellers from Listings
+                    const uniqueSellers = Object.values(filteredListings.reduce((acc, item) => {
+                      // Filter out MYSELF from browsing too
+                      if (item.seller === user.email) return acc;
+
+                      if (!acc[item.seller]) {
+                        acc[item.seller] = {
+                          email: item.seller,
+                          name: item.sellerName,
+                          dept: item.sellerDept,
+                          photoURL: null, // Listings don't have this, maybe we can fetch?
+                          count: 0
+                        };
+                      }
+                      acc[item.seller].count++;
+                      return acc;
+                    }, {}));
+                    displayUsers = uniqueSellers.map(u => ({ ...u, count: `${u.count} items` }));
+                  }
+
+                  if (displayUsers.length === 0) return <div className="text-center py-20 opacity-50 col-span-full"><Search size={48} className="mx-auto mb-2 text-gray-600" /><p>{searchQuery ? "No users found" : "No active sellers"}</p></div>;
 
                   return (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {uniqueUsers.map(u => (
+                      {displayUsers.map(u => (
                         <div key={u.email} onClick={() => handleViewProfile(u.email)} className="glass-card p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-white/5 border border-white/5 transition-all group">
-                          <div className="w-16 h-16 rounded-full bg-[#003366] flex items-center justify-center font-bold text-2xl text-white border-2 border-[#1a1c22] shadow-lg">
-                            {u.name[0].toUpperCase()}
+                          <div className="w-16 h-16 rounded-full bg-[#003366] flex items-center justify-center font-bold text-2xl text-white border-2 border-[#1a1c22] shadow-lg overflow-hidden">
+                            {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" alt={u.name} /> : u.name[0].toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-white text-lg truncate group-hover:text-blue-400 transition-colors">{u.name}</h3>
-                            <p className="text-sm text-gray-400">{u.dept || "NUSTian"} • {u.count} Listings</p>
+                            <p className="text-xs text-gray-400">{u.dept} • {u.count}</p>
                           </div>
-                          {u.email !== user?.email && (
-                            <button onClick={(e) => {
-                              e.stopPropagation();
-                              const existingChat = listings.find(l => l.seller === u.email) || { id: 'new', seller: u.email, sellerName: u.name, name: 'General Chat' };
-                              handleListingClick(existingChat);
-                            }} className="p-3 bg-blue-600 rounded-xl text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20" title="Message User">
-                              <MessageCircle size={20} />
-                            </button>
-                          )}
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            handleListingClick({ id: 'new', seller: u.email, sellerName: u.name });
+                          }} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-opacity shadow-lg shadow-blue-500/30" title="Message User">
+                            <MessageCircle size={20} />
+                          </button>
                         </div>
                       ))}
                     </div>
