@@ -1411,16 +1411,23 @@ export default function App() {
                 const isMyRequest = chatItem?.user === user.email;
 
                 let displayName = "User";
+                let otherEmail = null; // Store for Profile Click
+
                 if (isMyListing || isMyRequest) {
-                  // I am Owner. Find the other person.
+                  // I am Owner. Find the other person from messages or default to "User"
                   const otherMsg = msgs.find(m => m.sender !== user.email);
-                  displayName = otherMsg ? otherMsg.sender.split('@')[0] : "User";
-                  // Capitalize first letter
-                  displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+                  if (otherMsg) {
+                    displayName = otherMsg.sender.split('@')[0];
+                    otherEmail = otherMsg.sender;
+                  }
                 } else {
                   // I am Visitor. Show Owner Name.
                   displayName = chatItem?.sellerName || chatItem?.userName || "Owner";
+                  otherEmail = chatItem?.seller || chatItem?.user;
                 }
+
+                // Formatting
+                displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
 
                 const productName = chatItem?.name || chatItem?.title || "Chat";
                 const chatHeading = `${displayName} (${productName})`;
@@ -1432,7 +1439,14 @@ export default function App() {
                     setActiveChat(chatItem || { id, name: chatHeading });
                   }} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
                     <div className="relative">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${unreadCounts[id] ? 'bg-blue-600' : 'bg-blue-600/20'} overflow-hidden`}>
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (otherEmail) handleViewProfile(otherEmail);
+                        }}
+                        title="View Profile"
+                        className={`w-12 h-12 rounded-full flex items-center justify-center ${unreadCounts[id] ? 'bg-blue-600' : 'bg-blue-600/20'} overflow-hidden hover:scale-110 transition-transform cursor-pointer border-2 border-transparent hover:border-blue-400`}
+                      >
                         {/* Try to show initial of DisplayName */}
                         <span className={`font-bold ${unreadCounts[id] ? 'text-white' : 'text-blue-400'}`}>{displayName[0]}</span>
                       </div>
