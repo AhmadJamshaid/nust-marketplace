@@ -151,32 +151,9 @@ export const listenToRequests = (callback) => {
 
 
 // --- CHATS COLLECTION (METADATA) ---
-export const createChat = async (chatId, chatData) => {
-  const chatRef = doc(db, 'chats', chatId);
-  await setDoc(chatRef, {
-    ...chatData,
-    createdAt: chatData.createdAt || serverTimestamp(),
-    updatedAt: serverTimestamp()
-  }, { merge: true });
-};
-
-export const listenToUserChats = (userEmail, callback) => {
-  const q = query(
-    collection(db, 'chats'),
-    where('participants', 'array-contains', userEmail),
-    orderBy('updatedAt', 'desc')
-  );
-  return onSnapshot(q, (snap) => {
-    const chats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    callback(chats);
-  }, (error) => {
-    console.error("User chats listener error:", error);
-    callback([]);
-  });
-};
-
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
-export const sendMessage = async (chatId, sender, text, recipientEmail = null) => {
+export const sendMessage = async (chatId, sender, text) => {
+  // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
   await addDoc(collection(db, 'messages'), {
     chatId,
@@ -186,27 +163,13 @@ export const sendMessage = async (chatId, sender, text, recipientEmail = null) =
     clientTimestamp: timestamp.toISOString(),
     read: false
   });
-
-  // UPDATE CHAT METADATA (Last Message & Unread)
-  const chatRef = doc(db, 'chats', chatId);
-  const updatePayload = {
-    lastMessage: { text, sender, createdAt: serverTimestamp() },
-    updatedAt: serverTimestamp()
-  };
-
-  if (recipientEmail) {
-    // Sanitize Email for Map Key (Firestore interprets '.' as nested field)
-    const safeEmail = recipientEmail.replace(/\./g, ',');
-    updatePayload[`unreadCounts.${safeEmail}`] = increment(1);
-  }
-
-  await updateDoc(chatRef, updatePayload).catch(err => console.log("Chat metadata update skipped/failed:", err.message));
 };
 
 export const listenToMessages = (chatId, callback) => {
   const q = query(
     collection(db, 'messages'),
     where('chatId', '==', chatId)
+    // orderBy('createdAt', 'asc') // Removed to avoid index issues
   );
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => {
@@ -214,14 +177,18 @@ export const listenToMessages = (chatId, callback) => {
       return {
         id: d.id,
         ...data,
+        // Use clientTimestamp if serverTimestamp is not yet set
         createdAt: data.createdAt || new Date(data.clientTimestamp)
       };
     });
+
+    // Sort client-side to ensure correct order without Firestore index
     messages.sort((a, b) => {
       const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
       const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
       return timeA - timeB;
     });
+
     callback(messages);
   }, (error) => {
     console.error("Messages listener error:", error);
@@ -243,6 +210,7 @@ export const sendSystemMessageIfEmpty = async (chatId, text) => {
     });
   }
 };
+
 export const verifyResetCode = async (code) => {
   return await verifyPasswordResetCode(auth, code);
 };
@@ -252,14 +220,30 @@ export const confirmReset = async (code, newPassword) => {
   await confirmPasswordReset(auth, code, newPassword);
 };
 
+export const listenToAllMessages = (callback) => {
+  const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const messages = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        createdAt: data.createdAt || new Date(data.clientTimestamp)
+      };
+    });
+    callback(messages);
+  }, (error) => {
+    console.error("All messages listener error:", error);
+    callback([]);
+  });
+};
+
 export const deleteChat = async (chatId) => {
   const q = query(collection(db, 'messages'), where('chatId', '==', chatId));
   const snap = await getDocs(q);
   const batch = writeBatch(db);
   snap.docs.forEach((doc) => batch.delete(doc.ref));
   await batch.commit();
-  // Optionally delete chat metadata doc too, but messages are the bulk.
-  await deleteDoc(doc(db, 'chats', chatId));
 };
 
 export const rateUser = async (targetUserEmail, ratingValue) => {
@@ -299,33 +283,29 @@ export const searchUsersInDb = async (searchTerm) => {
 };
 
 export const markChatRead = async (chatId, userEmail) => {
-  if (!userEmail) return;
-
-  // 1. Mark Messages as Read (visual flag for old messages)
+  // Query ALL messages in this chat (safer to avoid compound index issues with 'read' field)
+  // We will filter client-side.
   const q = query(
     collection(db, 'messages'),
-    where('chatId', '==', chatId),
-    where('read', '==', false)
+    where('chatId', '==', chatId)
   );
 
-  // We can't use onSnapshot here, just a one-time update
-  getDocs(q).then(snap => {
-    const batch = writeBatch(db);
-    let count = 0;
-    snap.docs.forEach(d => {
-      const data = d.data();
-      if (data.sender && data.sender.toLowerCase() !== userEmail.toLowerCase()) {
-        batch.update(d.ref, { read: true });
-        count++;
-      }
-    });
-    if (count > 0) batch.commit().catch(e => console.error("Batch read update failed", e));
+  const snap = await getDocs(q);
+  const batch = writeBatch(db);
+
+  let updateCount = 0;
+  snap.docs.forEach((doc) => {
+    const data = doc.data();
+    // Check if unread AND sender is NOT me (Case-Insensitive for safety)
+    const isFromOther = data.sender && userEmail && data.sender.toLowerCase() !== userEmail.toLowerCase();
+
+    if (!data.read && isFromOther) {
+      batch.update(doc.ref, { read: true });
+      updateCount++;
+    }
   });
 
-  // 2. Reset Unread Count in Metadata (Critical for Inbox Badge)
-  const chatRef = doc(db, 'chats', chatId);
-  const safeEmail = userEmail.replace(/\./g, ',');
-  await updateDoc(chatRef, {
-    [`unreadCounts.${safeEmail}`]: 0
-  }).catch(e => console.log("Metadata read reset failed:", e.message));
+  if (updateCount > 0) {
+    await batch.commit();
+  }
 };

@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
-  MessageCircle, X, Mail, Camera, Eye, EyeOff,
-  Search, Sliders,
-  Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, CheckCheck
+  MessageCircle, Heart, Share2, Search, Plus, Filter, LogOut,
+  Menu, X, Home, ShoppingBag, User, Bell, ChevronRight,
+  Camera, MapPin, Tag, DollarSign, Send, Trash2, Mail, MoreVertical, XCircle,
+  Eye, EyeOff, ClipboardList, Zap, Clock, ShieldCheck, Flag, CheckCircle, AlertCircle, Edit2, Save, CheckCheck, Sliders
 } from 'lucide-react';
 import {
   authStateListener, logoutUser, loginWithUsername, signUpUser,
   createListing, createRequest, deleteRequest,
   resendVerificationLink, sendMessage, listenToMessages,
-  getPublicProfile, uploadImageToCloudinary,
-  deleteListing, markListingSold, reportListing, updateUserProfile,
-  listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers, getUserProfile,
-  createChat, listenToUserChats, listenToListings
+  listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
+  deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
+  listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
+  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers, getUserProfile
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
@@ -104,6 +103,7 @@ export default function App() {
   const [isSendingMsg, setIsSendingMsg] = useState(false);
   const messagesEndRef = useRef(null);
   const [hasUnread, setHasUnread] = useState(false);
+  const [unreadChats, setUnreadChats] = useState({});
 
 
 
@@ -267,21 +267,53 @@ export default function App() {
     }
   }, [activeChat, user]);
 
-  // --- INBOX LISTENER (NEW: METADATA BASED) ---
+  // --- INBOX LISTENER WITH UNREAD DETECTION ---
   useEffect(() => {
     if (user) {
-      const unsubscribe = listenToUserChats(user.email, (chats) => {
-        // "chats" contains the metadata docs directly.
-        setInboxGroups(chats);
+      const unsubscribe = listenToAllMessages((msgs) => {
+        // Step 1: Group messages FIRST by chatId
+        const allGroups = msgs.reduce((acc, m) => {
+          if (!acc[m.chatId]) acc[m.chatId] = [];
+          acc[m.chatId].push(m);
+          return acc;
+        }, {});
 
-        // Update Global Unread Badge based on Metadata
-        const safeMe = user.email.replace(/\./g, ',');
-        const anyUnread = chats.some(c => c.unreadCounts && c.unreadCounts[safeMe] > 0);
-        setHasUnread(anyUnread);
+        // Step 2: Filter GROUPS based on relevance
+        const relevantGroups = {};
+        Object.keys(allGroups).forEach(chatId => {
+          const groupMsgs = allGroups[chatId];
+          const isSeller = listings.find(l => l.id === chatId)?.seller === user.email;
+          const isRequester = requests.find(r => r.id === chatId)?.user === user.email;
+          // IMPORTANT FIX: Also include if I have sent ANY message in this chat (Participant)
+          // This allows "Buyers" (who are not sellers/requesters) to see the chat and replies
+          const hasParticipated = groupMsgs.some(m => m.sender === user.email);
+
+          if (isSeller || isRequester || hasParticipated) {
+            relevantGroups[chatId] = groupMsgs;
+          }
+        });
+
+        // Step 3: Set State
+        setInboxGroups(relevantGroups);
+
+        // Step 4: Calculate unread counts on RELEVANT chats
+        const unreadCounts = {};
+
+        Object.keys(relevantGroups).forEach(chatId => {
+          const chatMsgs = relevantGroups[chatId];
+          // CRITICAL FIX: Only count unread messages sent by OTHERS (not self), Case-Insensitive
+          const unreadCount = chatMsgs.filter(m => !m.read && m.sender.toLowerCase() !== user.email.toLowerCase()).length;
+          if (unreadCount > 0) {
+            unreadCounts[chatId] = unreadCount;
+          }
+        });
+
+        setUnreadChats(unreadCounts);
+        setHasUnread(Object.keys(unreadCounts).length > 0);
       });
       return () => unsubscribe();
     }
-  }, [user]);
+  }, [user, listings, requests]);
 
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
@@ -550,115 +582,57 @@ export default function App() {
 
 
 
+  const handleDeleteChat = async (chatId) => {
+    if (window.confirm("Delete this conversation?")) {
+      await deleteChat(chatId);
+      setInboxGroups(prev => { const n = { ...prev }; delete n[chatId]; return n; });
+    }
+  };
+
+  const handleStartChat = (targetUser, specificItem = null) => {
+    if (!user) { alert("Please login."); return; }
+    if (specificItem) {
+      setActiveChat(specificItem);
+      markChatRead(specificItem.id, user.email);
+    } else {
+      // Direct Message (DM)
+      const p = [user.email, targetUser.email].sort();
+      const dmId = `dm_${p[0]}_${p[1]}`;
+      setActiveChat({
+        id: dmId,
+        name: targetUser.displayName || targetUser.username || "User",
+        participants: [user.email, targetUser.email]
+      });
+      // Optional: Send system message if empty
+      sendSystemMessageIfEmpty(dmId, "👋 This is a direct message channel.");
+    }
+  };
+
   const handleRequestClick = (req) => {
     if (req.user !== user.email) {
       setActiveChat({
-        id: req.id,
-        name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`,
-        seller: req.user,
-        sellerName: req.userName // Just map userName to sellerName for consistency
+        id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
       });
       sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
     }
   };
 
-
-
-
-
-  // --- NEW UNIFIED CHAT STARTER ---
-  const handleStartChat = async (targetUser, specificContextItem = null) => {
-    if (!user) {
-      alert("Please login to chat.");
-      return;
-    }
-
-    // Determine Context & ID
-    let chatId = '';
-    let chatTopic = 'Direct Message';
-    let chatType = 'dm';
-
-    // 1. Check for context (Specific Listing OR Find Existing)
-    const listing = specificContextItem || listings.find(l => l.seller === targetUser.email && l.status !== 'SOLD');
-
-    if (listing) {
-      // Format: listingID_buyerEmail
-      const isMeSeller = listing.seller === user.email;
-      const buyerEmail = isMeSeller ? targetUser.email : user.email;
-
-
-      chatId = `${listing.id}_${buyerEmail}`;
-      chatTopic = listing.name;
-      chatType = 'listing';
-
-      // Safety: Ensure targetUser has minimal fields if passed structurally
-      if (!targetUser.displayName) targetUser.displayName = listing.sellerName || "User";
-    } else {
-      // 2. DM Context
-      const participants = [user.email, targetUser.email].sort();
-      chatId = `dm_${participants[0]}_${participants[1]}`;
-      chatTopic = 'Direct Message';
-      chatType = 'dm';
-    }
-
-    // PERSIST CHAT METADATA (The "Freeze")
-    const participantDetails = {
-      [user.email.replace(/\./g, ',')]: { username: user.displayName || "User", photoURL: user.photoURL },
-      [targetUser.email.replace(/\./g, ',')]: { username: targetUser.displayName || targetUser.name || "User", photoURL: targetUser.photoURL }
-    };
-
-    const chatData = {
-      participants: [user.email, targetUser.email],
-      participantDetails,
-      topic: chatTopic,
-      type: chatType
-    };
-    if (listing) {
-      chatData.listingId = listing.id;
-      chatData.seller = listing.seller;
-    }
-
-    await createChat(chatId, chatData);
-
-    // OPEN CHAT
-    // We construct the activeChat object to match what the View expects, 
-    // BUT effectively we should just use the chat data we just created/computed.
-    setActiveChat({
-      id: chatId,
-      participants: [user.email, targetUser.email],
-      participantDetails: participantDetails,
-      topic: chatTopic,
-      name: chatTopic // Backward compat for header logic if needed, but we will update header to use .topic
-    });
-
-    // Send generic system message if it's brand new (optional, rely on empty check)
-    sendSystemMessageIfEmpty(chatId, "👋 Verified Secure Channel. Safety tips apply! 🛡️");
-  };
-
   const handleListingClick = (item) => {
-    // Legacy wrapper: Ensure listing clicks go through unified logic
-    // We construct a "targetUser" object from the item details
-    // Item usually has: seller, sellerName.
-    if (item.seller === user.email) {
-      // If I am seller, I can't start a chat with myself unless it's a "View Buyer" context.
-      // In legacy handleListingClick, it was used to OPEN a chat.
-      // Usually passed { id, seller, name ... }
-      // If we are opening an EXISTING chat, we should just set activeChat.
-      // But to ensure metadata sort, let's assume this is mostly for BUYER -> SELLER.
-      setActiveChat(item); // Fallback for pure view
-    } else {
-      handleStartChat({ email: item.seller, displayName: item.sellerName }, item);
-    }
+    setActiveChat(item);
+    // Mark as read immediately when opening
+    markChatRead(item.id, user.email);
+    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
   };
+
+
 
   const handleSendChat = async (e) => {
     e.preventDefault();
     if (!newMsg.trim() || isSendingMsg) return;
     setIsSendingMsg(true);
     try {
-      // Find recipient for unread count increment
-      const recipient = activeChat.participants ? activeChat.participants.find(p => p !== user.email) : null;
-      await sendMessage(activeChat.id, user.email, newMsg, recipient);
+      await sendMessage(activeChat.id, user.email, newMsg);
+      // REMOVED: Automatic "Notification sent to WhatsApp" message
       setNewMsg('');
     } catch (err) {
       console.error("Send message error:", err);
@@ -1401,65 +1375,118 @@ export default function App() {
         {view === 'inbox' && (
           <div className="space-y-4 animate-slide-up">
             <h2 className="text-xl font-bold">Messages</h2>
-            {/* NEW INBOX RENDER LOGIC */}
-            {(!inboxGroups || inboxGroups.length === 0) ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
-              // inboxGroups is now an Array of Chat Objects (from listenToUserChats)
-              (Array.isArray(inboxGroups) ? inboxGroups : []).map(chat => {
+            {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
+              Object.keys(inboxGroups).map(id => {
+                const messages = inboxGroups[id];
+                const lastMessage = messages[0];
+                const unreadCountVal = unreadChats[id] || 0;
 
-                // DATA LOGIC (Strictly from Metadata)
-                // 1. Find Other Participant
-                const otherEmail = chat.participants.find(p => p !== user.email);
+                // 1. Derive Context from Chat ID
+                // Formats: "listingID_buyerEmail", "requestID", or "dm_user1_user2"
+                let itemId = id;
+                let otherEmail = null;
+                let topic = "Chat";
 
-                // 2. Get Name from Details
-                let displayName = "User";
-                let photoURL = null;
-                const safeOtherEmail = otherEmail ? otherEmail.replace(/\./g, ',') : '';
-                if (otherEmail && chat.participantDetails && chat.participantDetails[safeOtherEmail]) {
-                  displayName = chat.participantDetails[safeOtherEmail].username;
-                  photoURL = chat.participantDetails[safeOtherEmail].photoURL;
+                if (id.startsWith('dm_')) {
+                  // Direct Message
+                  const parts = id.split('_');
+                  // parts[1] and parts[2] are emails. Find the one that isn't me.
+                  otherEmail = parts.find(p => p !== 'dm' && p !== user.email);
+                  topic = "Direct Message";
+                } else if (id.includes('_')) {
+                  // Listing Chat: listingID_buyerEmail
+                  const parts = id.split('_');
+                  itemId = parts[0];
+                  // If I'm the buyer (email is in ID), seller is the owner of item.
+                  // If I'm the seller (email not in ID part 2), buyer is part 2.
+                  // Let's defer exact determination until we find the item.
                 }
 
-                // 3. Format: "Username (Topic)"
-                const chatHeading = `${displayName} (${chat.topic})`;
+                // 2. Find the Item (Listing or Request)
+                const chatItem = listings.find(l => l.id === itemId) || requests.find(r => r.id === itemId);
 
-                // 4. Last Message
-                const lastMsg = chat.lastMessage || { text: "No messages", createdAt: chat.createdAt };
+                // 3. Determine Topic
+                if (chatItem) {
+                  topic = chatItem.name || chatItem.title;
+                }
 
-                // 5. Unread Count (Server-Side Metadata)
-                const safeUserEmail = user.email.replace(/\./g, ',');
-                const unreadCount = (chat.unreadCounts && chat.unreadCounts[safeUserEmail]) ? chat.unreadCounts[safeUserEmail] : 0;
+                // 4. Determine Other User Email
+                if (!otherEmail) {
+                  // Strategy A: Check messages (Most Reliable)
+                  const msgFromOther = messages.find(m => m.sender !== user.email);
+                  if (msgFromOther) {
+                    otherEmail = msgFromOther.sender;
+                  }
+                  // Strategy B: Derive from Logic
+                  else if (chatItem) {
+                    // It's a listing/request. Who is the "Other"?
+                    if (chatItem.seller === user.email || chatItem.user === user.email) {
+                      // I am Owner. Other is Buyer/Responder.
+                      // For Listings: id is listingID_buyerEmail
+                      if (id.includes('_')) otherEmail = id.split('_')[1];
+                      // For Requests: id is just requestID.
+                      // If no messages, we don't know who started the chat unless we stored it.
+                      // But usually there IS a message if the chat exists in inboxGroups.
+                    } else {
+                      // I am Buyer. Other is Owner.
+                      otherEmail = chatItem.seller || chatItem.user;
+                    }
+                  }
+                }
+
+                // 5. Resolve Display Name
+                let displayName = "User";
+                if (otherEmail) {
+                  // Try to find name in locally available data
+                  // Check if they are a seller of any active listing around
+                  const known = listings.find(l => l.seller === otherEmail) || requests.find(r => r.user === otherEmail);
+                  if (known) {
+                    displayName = known.sellerName || known.userName || otherEmail.split('@')[0];
+                  } else {
+                    displayName = otherEmail.split('@')[0];
+                  }
+                }
+
+                const chatHeading = `${displayName} (${topic})`;
 
                 return (
-                  <div key={chat.id} onClick={() => {
+                  <div key={id} onClick={() => {
+                    // Pass resolved data to activeChat so header can use it too
                     setActiveChat({
-                      ...chat,
-                      name: chatHeading, // For Header consistency
-                      displayName: displayName // For Header explicit use
+                      id,
+                      topic,
+                      otherUserName: displayName, // Store for header
+                      otherUserEmail: otherEmail, // Store for header
+                      // Keep item properties if available, for context
+                      ...chatItem
                     });
                   }} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
                     <div className="relative">
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (otherEmail) handleViewProfile(otherEmail);
-                        }}
-                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white border-2 border-[#1a1c22] overflow-hidden ${unreadCount > 0 ? 'bg-blue-600' : 'bg-gray-700'}`}
-                      >
-                        {photoURL ? <img src={photoURL} className="w-full h-full object-cover" alt="Profile" /> : displayName[0]}
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${unreadCountVal ? 'bg-blue-600' : 'bg-blue-600/20'}`}>
+                        <Mail size={20} className={unreadCountVal ? 'text-white' : 'text-blue-400'} />
                       </div>
-                      {unreadCount > 0 && <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-[#1a1c22] flex items-center justify-center text-[10px] font-bold text-white animate-bounce-short">{unreadCount}</span>}
+                      {unreadCountVal > 0 && <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-[#1a1c22] flex items-center justify-center text-[10px] font-bold text-white animate-bounce-short">{unreadCountVal}</span>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline mb-1">
-                        <h4 className={`font-bold truncate text-sm ${unreadCount > 0 ? 'text-white' : 'text-gray-300'}`}>{chatHeading}</h4>
-                        <span className="text-[10px] text-gray-500">{formatTime(lastMsg.createdAt)}</span>
+                        <h4 className={`font-bold truncate ${unreadCountVal ? 'text-white' : 'text-gray-300'}`}>{chatHeading}</h4>
+                        <span className="text-[10px] text-gray-500">{formatTime(lastMessage.createdAt)}</span>
                       </div>
-                      <p className={`text-sm truncate ${unreadCount > 0 ? 'text-white font-medium' : 'text-gray-400'}`}>
-                        {lastMsg.sender === user.email && <span className="text-blue-400">You: </span>}
-                        {lastMsg.text}
-                      </p>
+                      <div className="flex justify-between items-center">
+                        <p className={`text-sm truncate max-w-[85%] ${unreadCountVal ? 'text-white font-medium' : 'text-gray-400'}`}>
+                          {lastMessage.sender === user.email && <span className="text-blue-400">You: </span>}
+                          {lastMessage.text}
+                        </p>
+                        {unreadCountVal > 0 && (
+                          <div className="min-w-[20px] h-5 px-1 bg-green-500 rounded-full flex items-center justify-center text-[10px] font-bold text-black ml-2">
+                            {unreadCountVal}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    {/* Delete button logic... */}
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteChat(id) }} className="absolute right-2 top-2 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Conversation">
+                      <XCircle size={16} />
+                    </button>
                   </div>
                 );
               })
@@ -1724,93 +1751,86 @@ export default function App() {
         )
       }
 
-      {
-        activeChat && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
-              <div className="p-4 bg-[#1a1c22] flex justify-between items-center border-b border-white/5">
-                <div
-                  className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={() => {
-                    // Determine ID of the OTHER user
-                    const isSeller = activeChat.seller === user.email;
-                    const otherEmail = isSeller ? (
-                      // If I am seller/owner, I need to find who I am talking to (Buyer)
-                      // We can find this from the messages
-                      chatMessages.find(m => m.sender !== user.email)?.sender
-                    ) : activeChat.seller; // If I am buyer, seller is the other person
-
-                    if (otherEmail) {
-                      handleViewProfile(otherEmail, activeChat.id);
-                      setActiveChat(null); // Close chat to view profile
-                    }
-                  }}
-                >
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
-                    {/* Logic for Header Name Initials */}
-                    {(() => {
-                      const isMyListing = activeChat.seller === user.email;
-                      const isMyRequest = activeChat.user === user.email;
-
-                      if (isMyListing || isMyRequest) {
-                        // I am Owner. Other is "User" or Name from msg
-                        const otherMsg = chatMessages.find(m => m.sender !== user.email);
-                        const name = otherMsg?.sender ? otherMsg.sender.split('@')[0] : "User";
-                        return name[0].toUpperCase();
-                      }
-                      return (activeChat.sellerName || activeChat.userName || "O")[0].toUpperCase();
-                    })()}
-                  </div>
-                  <div>
-                    {/* Logic for Header Name Display */}
-                    {(() => {
-                      // activeChat has .participantDetails?
-                      if (activeChat.participantDetails && activeChat.participants) {
-                        const other = activeChat.participants.find(p => p !== user.email);
-                        // Sanitize email key lookup
-                        const safeOther = other ? other.replace(/\./g, ',') : '';
-                        const name = (activeChat.participantDetails[safeOther])?.username || "User";
-                        return <h3 className="font-bold text-sm">{`${name} (${activeChat.topic || "Chat"})`}</h3>;
-                      }
-                      // Fallback for legacy "name" usage (if any)
-                      return <h3 className="font-bold text-sm">{activeChat.name || "Chat"}</h3>;
-                    })()}
-                  </div>
+      {activeChat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="glass-card w-full max-w-md h-[80vh] rounded-2xl flex flex-col overflow-hidden">
+            <div className="p-4 bg-[#1a1c22] flex justify-between items-center border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
+                  {/* Avatar Initials logic */}
+                  {(() => {
+                    if (activeChat.otherUserName) return activeChat.otherUserName[0].toUpperCase();
+                    // Fallback for fresh chats
+                    return (activeChat.sellerName || activeChat.name || "?")[0].toUpperCase();
+                  })()}
                 </div>
-                <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18} /></button>
+                <div>
+                  {/* Header Title: Other User Name (Topic) */}
+                  {(() => {
+                    // 1. Prefer Pre-calculated from Inbox
+                    if (activeChat.otherUserName) {
+                      return (
+                        <>
+                          <h3 className="font-bold text-sm">{activeChat.otherUserName}</h3>
+                          <p className="text-[10px] text-gray-400">({activeChat.topic || "Chat"})</p>
+                        </>
+                      );
+                    }
+
+                    // 2. Fallback (For freshly started chats via "Message" button)
+                    // We try to figure out who we are talking to.
+                    let name = activeChat.sellerName || "User";
+                    let topic = activeChat.name || activeChat.title || "Chat";
+
+                    // If I am the seller, I need to know who the buyer is. 
+                    // But usually "Message" button is for Buyer -> Seller.
+                    // So "sellerName" is actually the Other Person. 
+                    // Exception: If I open a "Request" chat, I am clicking "Chat" on someone else's request. 
+                    // Their name is stored in sellerName/userName prop usually.
+
+                    return (
+                      <>
+                        <h3 className="font-bold text-sm">{name}</h3>
+                        <p className="text-[10px] text-gray-400">({topic})</p>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {chatMessages.length === 0 && (
-                  <div className="text-center text-gray-500 py-8">
-                    <MessageCircle size={48} className="mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No messages yet. Start the conversation!</p>
-                  </div>
-                )}
-                {chatMessages.map(m => (
-                  <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-start' : 'justify-end'}`}>
-                    <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
-                      {m.text}
-                      <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
-                        {formatTime(m.createdAt)}
-                        {/* Green Ticks for Sent Messages */}
-                        {m.sender.toLowerCase() === user.email.toLowerCase() && (
-                          <CheckCheck size={14} className={m.read ? "text-green-500 font-bold" : "text-gray-500"} />
-                        )}
-                      </div>
+              <button onClick={() => setActiveChat(null)} className="p-2 hover:bg-white/10 rounded-full" title="Close"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {chatMessages.length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  <MessageCircle size={48} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No messages yet. Start the conversation!</p>
+                </div>
+              )}
+              {chatMessages.map(m => (
+                <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-start' : 'justify-end'}`}>
+                  <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
+                    {m.text}
+                    <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
+                      {formatTime(m.createdAt)}
+                      {/* Green Ticks for Sent Messages */}
+                      {m.sender.toLowerCase() === user.email.toLowerCase() && (
+                        <CheckCheck size={14} className={m.read ? "text-green-500 font-bold" : "text-gray-500"} />
+                      )}
                     </div>
                   </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-              <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2 border-t border-white/5">
-                <input value={newMsg} onChange={e => setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type a message..." />
-                <button disabled={isSendingMsg} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
-                  <Send size={18} />
-                </button>
-              </form>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
             </div>
+            <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2 border-t border-white/5">
+              <input value={newMsg} onChange={e => setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type a message..." />
+              <button disabled={isSendingMsg} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
+                <Send size={18} />
+              </button>
+            </form>
           </div>
-        )
+        </div>
+      )
       }
 
       {
