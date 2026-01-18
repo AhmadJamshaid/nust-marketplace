@@ -1376,24 +1376,32 @@ export default function App() {
 
                 // Let's assume grouping preserves order.
 
-                // DATA LOGIC FOR HEADING
-                const isMyListing = chatItem?.seller === user.email;
-                const isMyRequest = chatItem?.user === user.email;
-
+                // DATA LOGIC FOR HEADING (UNIVERSAL - NO DISCRIMINATION)
                 let displayName = "User";
-                let otherEmail = null; // Store for Profile Click
+                let otherEmail = null;
 
-                if (isMyListing || isMyRequest) {
-                  // I am Owner. Find the other person from messages or default to "User"
-                  const otherMsg = msgs.find(m => m.sender !== user.email);
-                  if (otherMsg) {
-                    displayName = otherMsg.sender.split('@')[0];
-                    otherEmail = otherMsg.sender;
-                  }
+                // 1. Try to find the OTHER person in the message history (Most accurate/real-time)
+                const otherMsg = msgs.find(m => m.sender !== user.email);
+                if (otherMsg) {
+                  displayName = otherMsg.sender.split('@')[0];
+                  otherEmail = otherMsg.sender;
                 } else {
-                  // I am Visitor. Show Owner Name.
-                  displayName = chatItem?.sellerName || chatItem?.userName || "Owner";
-                  otherEmail = chatItem?.seller || chatItem?.user;
+                  // 2. Fallback Logic (If no messages from them yet)
+                  const ownerEmail = chatItem?.seller || chatItem?.user;
+
+                  if (ownerEmail && ownerEmail !== user.email) {
+                    // I am the Visitor/Buyer -> Show Owner Name
+                    displayName = chatItem?.sellerName || chatItem?.userName || ownerEmail.split('@')[0];
+                    otherEmail = ownerEmail;
+                  } else {
+                    // I am the Owner -> Show Buyer Name (Extract from Composite ID if possible)
+                    // Chat ID Format: "itemId_buyerEmail"
+                    const parts = id.split('_');
+                    if (parts.length > 1 && parts[1].includes('@')) {
+                      displayName = parts[1].split('@')[0];
+                      otherEmail = parts[1];
+                    }
+                  }
                 }
 
                 // Formatting
@@ -1733,33 +1741,49 @@ export default function App() {
                   <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
                     {/* Logic for Header Name Initials */}
                     {(() => {
-                      const isMyListing = activeChat.seller === user.email;
-                      const isMyRequest = activeChat.user === user.email;
-
-                      if (isMyListing || isMyRequest) {
-                        // I am Owner. Other is "User" or Name from msg
-                        const otherMsg = chatMessages.find(m => m.sender !== user.email);
-                        const name = otherMsg?.sender ? otherMsg.sender.split('@')[0] : "User";
-                        return name[0].toUpperCase();
+                      let name = "User";
+                      // 1. Try to find other person
+                      const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                      if (otherMsg) {
+                        name = otherMsg.sender.split('@')[0];
+                      } else {
+                        // 2. Fallback
+                        const ownerEmail = activeChat.seller || activeChat.user;
+                        if (ownerEmail && ownerEmail !== user.email) {
+                          name = activeChat.sellerName || activeChat.userName || "Owner";
+                        } else {
+                          // I am owner. Try composite ID.
+                          const parts = activeChat.id ? activeChat.id.split('_') : [];
+                          if (parts.length > 1 && parts[1].includes('@')) {
+                            name = parts[1].split('@')[0];
+                          }
+                        }
                       }
-                      return (activeChat.sellerName || activeChat.userName || "O")[0].toUpperCase();
+                      return name[0].toUpperCase();
                     })()}
                   </div>
                   <div>
                     {/* Logic for Header Name Display */}
                     <h3 className="font-bold text-sm">
                       {(() => {
-                        const isMyListing = activeChat.seller === user.email;
-                        const isMyRequest = activeChat.user === user.email;
                         let name = "User";
 
-                        if (isMyListing || isMyRequest) {
-                          // Show Buyer Name
-                          const otherMsg = chatMessages.find(m => m.sender !== user.email);
-                          name = otherMsg?.sender?.split('@')[0] || "User";
+                        // 1. Try to find other person (Universal)
+                        const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                        if (otherMsg) {
+                          name = otherMsg.sender.split('@')[0];
                         } else {
-                          // Show Seller/Owner Name
-                          name = activeChat.sellerName || activeChat.userName || "Owner";
+                          // 2. Fallback
+                          const ownerEmail = activeChat.seller || activeChat.user;
+                          if (ownerEmail && ownerEmail !== user.email) {
+                            name = activeChat.sellerName || activeChat.userName || "Owner";
+                          } else {
+                            // I am owner. Try composite ID.
+                            const parts = activeChat.id ? activeChat.id.split('_') : [];
+                            if (parts.length > 1 && parts[1].includes('@')) {
+                              name = parts[1].split('@')[0];
+                            }
+                          }
                         }
 
                         // Capitalize
