@@ -195,7 +195,9 @@ export const sendMessage = async (chatId, sender, text, recipientEmail = null) =
   };
 
   if (recipientEmail) {
-    updatePayload[`unreadCounts.${recipientEmail}`] = increment(1);
+    // Sanitize Email for Map Key (Firestore interprets '.' as nested field)
+    const safeEmail = recipientEmail.replace(/\./g, ',');
+    updatePayload[`unreadCounts.${safeEmail}`] = increment(1);
   }
 
   await updateDoc(chatRef, updatePayload).catch(err => console.log("Chat metadata update skipped/failed:", err.message));
@@ -322,7 +324,8 @@ export const markChatRead = async (chatId, userEmail) => {
 
   // 2. Reset Unread Count in Metadata (Critical for Inbox Badge)
   const chatRef = doc(db, 'chats', chatId);
+  const safeEmail = userEmail.replace(/\./g, ',');
   await updateDoc(chatRef, {
-    [`unreadCounts.${userEmail}`]: 0
+    [`unreadCounts.${safeEmail}`]: 0
   }).catch(e => console.log("Metadata read reset failed:", e.message));
 };

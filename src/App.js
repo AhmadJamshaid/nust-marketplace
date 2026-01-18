@@ -275,7 +275,8 @@ export default function App() {
         setInboxGroups(chats);
 
         // Update Global Unread Badge based on Metadata
-        const anyUnread = chats.some(c => c.unreadCounts && c.unreadCounts[user.email] > 0);
+        const safeMe = user.email.replace(/\./g, ',');
+        const anyUnread = chats.some(c => c.unreadCounts && c.unreadCounts[safeMe] > 0);
         setHasUnread(anyUnread);
       });
       return () => unsubscribe();
@@ -602,8 +603,8 @@ export default function App() {
 
     // PERSIST CHAT METADATA (The "Freeze")
     const participantDetails = {
-      [user.email]: { username: user.displayName || "User", photoURL: user.photoURL },
-      [targetUser.email]: { username: targetUser.displayName || targetUser.name || "User", photoURL: targetUser.photoURL }
+      [user.email.replace(/\./g, ',')]: { username: user.displayName || "User", photoURL: user.photoURL },
+      [targetUser.email.replace(/\./g, ',')]: { username: targetUser.displayName || targetUser.name || "User", photoURL: targetUser.photoURL }
     };
 
     const chatData = {
@@ -1412,9 +1413,10 @@ export default function App() {
                 // 2. Get Name from Details
                 let displayName = "User";
                 let photoURL = null;
-                if (otherEmail && chat.participantDetails && chat.participantDetails[otherEmail]) {
-                  displayName = chat.participantDetails[otherEmail].username;
-                  photoURL = chat.participantDetails[otherEmail].photoURL;
+                const safeOtherEmail = otherEmail ? otherEmail.replace(/\./g, ',') : '';
+                if (otherEmail && chat.participantDetails && chat.participantDetails[safeOtherEmail]) {
+                  displayName = chat.participantDetails[safeOtherEmail].username;
+                  photoURL = chat.participantDetails[safeOtherEmail].photoURL;
                 }
 
                 // 3. Format: "Username (Topic)"
@@ -1424,7 +1426,8 @@ export default function App() {
                 const lastMsg = chat.lastMessage || { text: "No messages", createdAt: chat.createdAt };
 
                 // 5. Unread Count (Server-Side Metadata)
-                const unreadCount = (chat.unreadCounts && chat.unreadCounts[user.email]) ? chat.unreadCounts[user.email] : 0;
+                const safeUserEmail = user.email.replace(/\./g, ',');
+                const unreadCount = (chat.unreadCounts && chat.unreadCounts[safeUserEmail]) ? chat.unreadCounts[safeUserEmail] : 0;
 
                 return (
                   <div key={chat.id} onClick={() => {
@@ -1764,7 +1767,9 @@ export default function App() {
                       // activeChat has .participantDetails?
                       if (activeChat.participantDetails && activeChat.participants) {
                         const other = activeChat.participants.find(p => p !== user.email);
-                        const name = activeChat.participantDetails[other]?.username || "User";
+                        // Sanitize email key lookup
+                        const safeOther = other ? other.replace(/\./g, ',') : '';
+                        const name = (activeChat.participantDetails[safeOther])?.username || "User";
                         return <h3 className="font-bold text-sm">{`${name} (${activeChat.topic || "Chat"})`}</h3>;
                       }
                       // Fallback for legacy "name" usage (if any)
