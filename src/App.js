@@ -13,7 +13,7 @@ import {
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers, getUserProfile,
-  createChat, listenToUserChats
+  createChat, listenToUserChats, listenToListings
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];

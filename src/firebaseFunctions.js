@@ -144,184 +144,185 @@ export const listenToRequests = (callback) => {
     console.error("Requests listener error:", error);
     callback([]);
   });
+};
 
 
-  // --- CHATS COLLECTION (METADATA) ---
+// --- CHATS COLLECTION (METADATA) ---
 
 
-  // --- CHATS COLLECTION (METADATA) ---
-  export const createChat = async (chatId, chatData) => {
-    const chatRef = doc(db, 'chats', chatId);
-    await setDoc(chatRef, {
-      ...chatData,
-      createdAt: chatData.createdAt || serverTimestamp(),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+// --- CHATS COLLECTION (METADATA) ---
+export const createChat = async (chatId, chatData) => {
+  const chatRef = doc(db, 'chats', chatId);
+  await setDoc(chatRef, {
+    ...chatData,
+    createdAt: chatData.createdAt || serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+};
+
+export const listenToUserChats = (userEmail, callback) => {
+  const q = query(
+    collection(db, 'chats'),
+    where('participants', 'array-contains', userEmail),
+    orderBy('updatedAt', 'desc')
+  );
+  return onSnapshot(q, (snap) => {
+    const chats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(chats);
+  }, (error) => {
+    console.error("User chats listener error:", error);
+    callback([]);
+  });
+};
+
+// --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
+export const sendMessage = async (chatId, sender, text, recipientEmail = null) => {
+  const timestamp = new Date();
+  await addDoc(collection(db, 'messages'), {
+    chatId,
+    sender,
+    text,
+    createdAt: serverTimestamp(),
+    clientTimestamp: timestamp.toISOString(),
+    read: false
+  });
+
+  // UPDATE CHAT METADATA (Last Message & Unread)
+  const chatRef = doc(db, 'chats', chatId);
+  const updatePayload = {
+    lastMessage: { text, sender, createdAt: serverTimestamp() },
+    updatedAt: serverTimestamp()
   };
 
-  export const listenToUserChats = (userEmail, callback) => {
-    const q = query(
-      collection(db, 'chats'),
-      where('participants', 'array-contains', userEmail),
-      orderBy('updatedAt', 'desc')
-    );
-    return onSnapshot(q, (snap) => {
-      const chats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      callback(chats);
-    }, (error) => {
-      console.error("User chats listener error:", error);
-      callback([]);
+  if (recipientEmail) {
+    updatePayload[`unreadCounts.${recipientEmail}`] = increment(1);
+  }
+
+  await updateDoc(chatRef, updatePayload).catch(err => console.log("Chat metadata update skipped/failed:", err.message));
+};
+
+export const listenToMessages = (chatId, callback) => {
+  const q = query(
+    collection(db, 'messages'),
+    where('chatId', '==', chatId)
+  );
+  return onSnapshot(q, (snap) => {
+    const messages = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        createdAt: data.createdAt || new Date(data.clientTimestamp)
+      };
     });
-  };
+    messages.sort((a, b) => {
+      const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+      const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+      return timeA - timeB;
+    });
+    callback(messages);
+  }, (error) => {
+    console.error("Messages listener error:", error);
+    callback([]);
+  });
+};
 
-  // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
-  export const sendMessage = async (chatId, sender, text, recipientEmail = null) => {
-    const timestamp = new Date();
+export const sendSystemMessageIfEmpty = async (chatId, text) => {
+  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) {
     await addDoc(collection(db, 'messages'), {
       chatId,
-      sender,
+      sender: "System",
       text,
       createdAt: serverTimestamp(),
-      clientTimestamp: timestamp.toISOString(),
-      read: false
+      clientTimestamp: new Date().toISOString(),
+      read: true
     });
+  }
+};
+export const verifyResetCode = async (code) => {
+  return await verifyPasswordResetCode(auth, code);
+};
 
-    // UPDATE CHAT METADATA (Last Message & Unread)
-    const chatRef = doc(db, 'chats', chatId);
-    const updatePayload = {
-      lastMessage: { text, sender, createdAt: serverTimestamp() },
-      updatedAt: serverTimestamp()
-    };
+export const confirmReset = async (code, newPassword) => {
+  validatePassword(newPassword);
+  await confirmPasswordReset(auth, code, newPassword);
+};
 
-    if (recipientEmail) {
-      updatePayload[`unreadCounts.${recipientEmail}`] = increment(1);
-    }
+export const deleteChat = async (chatId) => {
+  const q = query(collection(db, 'messages'), where('chatId', '==', chatId));
+  const snap = await getDocs(q);
+  const batch = writeBatch(db);
+  snap.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+  // Optionally delete chat metadata doc too, but messages are the bulk.
+  await deleteDoc(doc(db, 'chats', chatId));
+};
 
-    await updateDoc(chatRef, updatePayload).catch(err => console.log("Chat metadata update skipped/failed:", err.message));
-  };
+export const rateUser = async (targetUserEmail, ratingValue) => {
+  const q = query(collection(db, 'users'), where('email', '==', targetUserEmail));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    const userDoc = snap.docs[0];
+    const { reputation, totalRatings } = userDoc.data();
+    const newCount = (totalRatings || 0) + 1;
+    const newAverage = ((reputation * (totalRatings || 0)) + ratingValue) / newCount;
+    await updateDoc(doc(db, 'users', userDoc.id), { reputation: Number(newAverage.toFixed(1)), totalRatings: increment(1) });
+  }
+};
 
-  export const listenToMessages = (chatId, callback) => {
-    const q = query(
-      collection(db, 'messages'),
-      where('chatId', '==', chatId)
+export const getAllUsers = async (limitCount = 50) => {
+  const simpleQ = query(collection(db, 'users'), limit(limitCount));
+  const snap = await getDocs(simpleQ);
+  return snap.docs.map(d => d.data());
+};
+
+export const getUserProfile = async (email) => {
+  const q = query(collection(db, 'users'), where('email', '==', email), limit(1));
+  const snap = await getDocs(q);
+  if (!snap.empty) return snap.docs[0].data();
+  return null;
+};
+
+export const searchUsersInDb = async (searchTerm) => {
+  const q = query(collection(db, 'users'), limit(50));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map(d => d.data())
+    .filter(u =>
+      (u.username && u.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (u.displayName && u.displayName.toLowerCase().includes(searchTerm.toLowerCase()))
     );
-    return onSnapshot(q, (snap) => {
-      const messages = snap.docs.map(d => {
-        const data = d.data();
-        return {
-          id: d.id,
-          ...data,
-          createdAt: data.createdAt || new Date(data.clientTimestamp)
-        };
-      });
-      messages.sort((a, b) => {
-        const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-        const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-        return timeA - timeB;
-      });
-      callback(messages);
-    }, (error) => {
-      console.error("Messages listener error:", error);
-      callback([]);
-    });
-  };
+};
 
-  export const sendSystemMessageIfEmpty = async (chatId, text) => {
-    const q = query(collection(db, 'messages'), where('chatId', '==', chatId), limit(1));
-    const snap = await getDocs(q);
-    if (snap.empty) {
-      await addDoc(collection(db, 'messages'), {
-        chatId,
-        sender: "System",
-        text,
-        createdAt: serverTimestamp(),
-        clientTimestamp: new Date().toISOString(),
-        read: true
-      });
-    }
-  };
-  export const verifyResetCode = async (code) => {
-    return await verifyPasswordResetCode(auth, code);
-  };
+export const markChatRead = async (chatId, userEmail) => {
+  if (!userEmail) return;
 
-  export const confirmReset = async (code, newPassword) => {
-    validatePassword(newPassword);
-    await confirmPasswordReset(auth, code, newPassword);
-  };
+  // 1. Mark Messages as Read (visual flag for old messages)
+  const q = query(
+    collection(db, 'messages'),
+    where('chatId', '==', chatId),
+    where('read', '==', false)
+  );
 
-  export const deleteChat = async (chatId) => {
-    const q = query(collection(db, 'messages'), where('chatId', '==', chatId));
-    const snap = await getDocs(q);
+  // We can't use onSnapshot here, just a one-time update
+  getDocs(q).then(snap => {
     const batch = writeBatch(db);
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    // Optionally delete chat metadata doc too, but messages are the bulk.
-    await deleteDoc(doc(db, 'chats', chatId));
-  };
-
-  export const rateUser = async (targetUserEmail, ratingValue) => {
-    const q = query(collection(db, 'users'), where('email', '==', targetUserEmail));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const userDoc = snap.docs[0];
-      const { reputation, totalRatings } = userDoc.data();
-      const newCount = (totalRatings || 0) + 1;
-      const newAverage = ((reputation * (totalRatings || 0)) + ratingValue) / newCount;
-      await updateDoc(doc(db, 'users', userDoc.id), { reputation: Number(newAverage.toFixed(1)), totalRatings: increment(1) });
-    }
-  };
-
-  export const getAllUsers = async (limitCount = 50) => {
-    const simpleQ = query(collection(db, 'users'), limit(limitCount));
-    const snap = await getDocs(simpleQ);
-    return snap.docs.map(d => d.data());
-  };
-
-  export const getUserProfile = async (email) => {
-    const q = query(collection(db, 'users'), where('email', '==', email), limit(1));
-    const snap = await getDocs(q);
-    if (!snap.empty) return snap.docs[0].data();
-    return null;
-  };
-
-  export const searchUsersInDb = async (searchTerm) => {
-    const q = query(collection(db, 'users'), limit(50));
-    const snap = await getDocs(q);
-    return snap.docs
-      .map(d => d.data())
-      .filter(u =>
-        (u.username && u.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (u.displayName && u.displayName.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-  };
-
-  export const markChatRead = async (chatId, userEmail) => {
-    if (!userEmail) return;
-
-    // 1. Mark Messages as Read (visual flag for old messages)
-    const q = query(
-      collection(db, 'messages'),
-      where('chatId', '==', chatId),
-      where('read', '==', false)
-    );
-
-    // We can't use onSnapshot here, just a one-time update
-    getDocs(q).then(snap => {
-      const batch = writeBatch(db);
-      let count = 0;
-      snap.docs.forEach(d => {
-        const data = d.data();
-        if (data.sender && data.sender.toLowerCase() !== userEmail.toLowerCase()) {
-          batch.update(d.ref, { read: true });
-          count++;
-        }
-      });
-      if (count > 0) batch.commit().catch(e => console.error("Batch read update failed", e));
+    let count = 0;
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.sender && data.sender.toLowerCase() !== userEmail.toLowerCase()) {
+        batch.update(d.ref, { read: true });
+        count++;
+      }
     });
+    if (count > 0) batch.commit().catch(e => console.error("Batch read update failed", e));
+  });
 
-    // 2. Reset Unread Count in Metadata (Critical for Inbox Badge)
-    const chatRef = doc(db, 'chats', chatId);
-    await updateDoc(chatRef, {
-      [`unreadCounts.${userEmail}`]: 0
-    }).catch(e => console.log("Metadata read reset failed:", e.message));
-  };
+  // 2. Reset Unread Count in Metadata (Critical for Inbox Badge)
+  const chatRef = doc(db, 'chats', chatId);
+  await updateDoc(chatRef, {
+    [`unreadCounts.${userEmail}`]: 0
+  }).catch(e => console.log("Metadata read reset failed:", e.message));
+};
