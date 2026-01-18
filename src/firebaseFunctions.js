@@ -150,6 +150,14 @@ export const listenToRequests = (callback) => {
 export const sendMessage = async (chatId, sender, text) => {
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
+
+  // 1. Check if this is the start of a conversation (to send System Tip)
+  // We check existing messages. If 0, then this is the first one.
+  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), limit(1));
+  const snap = await getDocs(q);
+  const isFirstMessage = snap.empty;
+
+  // 2. Add User Message
   await addDoc(collection(db, 'messages'), {
     chatId,
     sender,
@@ -158,6 +166,18 @@ export const sendMessage = async (chatId, sender, text) => {
     clientTimestamp: timestamp.toISOString(),
     read: false
   });
+
+  // 3. If first message, Add System Tip
+  if (isFirstMessage) {
+    await addDoc(collection(db, 'messages'), {
+      chatId,
+      sender: "System",
+      text: "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️",
+      createdAt: serverTimestamp(),
+      clientTimestamp: new Date(timestamp.getTime() + 100).toISOString(), // slightly after
+      read: false
+    });
+  }
 };
 
 export const listenToMessages = (chatId, callback) => {

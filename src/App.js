@@ -589,7 +589,6 @@ export default function App() {
       setActiveChat({
         id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
       });
-      sendSystemMessageIfEmpty(req.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
     }
   };
 
@@ -599,7 +598,6 @@ export default function App() {
     setActiveChat(item);
     // Mark as read immediately when opening
     markChatRead(item.id, user.email);
-    sendSystemMessageIfEmpty(item.id, "👋 Tip: feel free to exchange WhatsApp numbers for faster communication! ⚡ Just remember: NUST Marketplace isn't responsible for trades outside the platform. Stay safe! 🛡️");
   };
 
   const handleSendChat = async (e) => {
@@ -1381,7 +1379,7 @@ export default function App() {
                 let otherEmail = null;
 
                 // 1. Try to find the OTHER person in the message history (Most accurate/real-time)
-                const otherMsg = msgs.find(m => m.sender !== user.email);
+                const otherMsg = msgs.find(m => m.sender !== user.email && m.sender !== 'System');
                 if (otherMsg) {
                   displayName = otherMsg.sender.split('@')[0];
                   otherEmail = otherMsg.sender;
@@ -1743,7 +1741,7 @@ export default function App() {
                     {(() => {
                       let name = "User";
                       // 1. Try to find other person
-                      const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                      const otherMsg = chatMessages.find(m => m.sender !== user.email && m.sender !== 'System');
                       if (otherMsg) {
                         name = otherMsg.sender.split('@')[0];
                       } else {
@@ -1769,7 +1767,7 @@ export default function App() {
                         let name = "User";
 
                         // 1. Try to find other person (Universal)
-                        const otherMsg = chatMessages.find(m => m.sender !== user.email);
+                        const otherMsg = chatMessages.find(m => m.sender !== user.email && m.sender !== 'System');
                         if (otherMsg) {
                           name = otherMsg.sender.split('@')[0];
                         } else {
