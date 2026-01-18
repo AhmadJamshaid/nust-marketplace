@@ -146,11 +146,6 @@ export const listenToRequests = (callback) => {
   });
 };
 
-
-// --- CHATS COLLECTION (METADATA) ---
-
-
-// --- CHATS COLLECTION (METADATA) ---
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
 export const sendMessage = async (chatId, sender, text) => {
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
@@ -211,15 +206,6 @@ export const sendSystemMessageIfEmpty = async (chatId, text) => {
   }
 };
 
-export const verifyResetCode = async (code) => {
-  return await verifyPasswordResetCode(auth, code);
-};
-
-export const confirmReset = async (code, newPassword) => {
-  validatePassword(newPassword);
-  await confirmPasswordReset(auth, code, newPassword);
-};
-
 export const listenToAllMessages = (callback) => {
   const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
@@ -258,7 +244,13 @@ export const rateUser = async (targetUserEmail, ratingValue) => {
   }
 };
 
+
 export const getAllUsers = async (limitCount = 50) => {
+
+  // If 'createdAt' index is missing, it might fail. Fallback without sort if needed.
+  // Actually, let's just use limit for robustness first, or sort by username?
+  // Sorting by username is weird if no full index. 
+  // Let's just fetch limit 50.
   const simpleQ = query(collection(db, 'users'), limit(limitCount));
   const snap = await getDocs(simpleQ);
   return snap.docs.map(d => d.data());
@@ -309,3 +301,15 @@ export const markChatRead = async (chatId, userEmail) => {
     await batch.commit();
   }
 };
+
+
+
+export const verifyResetCode = async (code) => {
+  return await verifyPasswordResetCode(auth, code);
+};
+
+export const confirmReset = async (code, newPassword) => {
+  validatePassword(newPassword);
+  await confirmPasswordReset(auth, code, newPassword);
+};
+
