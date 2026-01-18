@@ -12,7 +12,7 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers, getUserProfile
+  confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];

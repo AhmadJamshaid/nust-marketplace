@@ -211,20 +211,7 @@ export const listenToMessages = (chatId, callback) => {
   });
 };
 
-export const sendSystemMessageIfEmpty = async (chatId, text) => {
-  const q = query(collection(db, 'messages'), where('chatId', '==', chatId), limit(1));
-  const snap = await getDocs(q);
-  if (snap.empty) {
-    await addDoc(collection(db, 'messages'), {
-      chatId,
-      sender: "System",
-      text,
-      createdAt: serverTimestamp(),
-      clientTimestamp: new Date().toISOString(),
-      read: true
-    });
-  }
-};
+
 
 export const listenToAllMessages = (callback) => {
   const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
