@@ -65,6 +65,8 @@ export default function App() {
   const [view, setView] = useState('market');
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
+  // Contact Names Cache (Fix for Email Display)
+  const [contactNames, setContactNames] = useState({});
 
   // --- LOADING STATES ---
   const [isLoading, setIsLoading] = useState(true);
@@ -311,6 +313,61 @@ export default function App() {
       return () => unsubscribe();
     }
   }, [user, listings, requests]);
+
+  // --- CONTACT NAME RESOLUTION EFFECT ---
+  useEffect(() => {
+    const resolveNames = async () => {
+      const unknownEmails = new Set();
+
+      // 1. Scan Inbox Groups for emails we don't have a name for
+      Object.keys(inboxGroups).forEach(id => {
+        const msgs = inboxGroups[id];
+        const otherMsg = msgs.find(m => m.sender !== user.email && m.sender !== 'System');
+        let emailToCheck = otherMsg ? otherMsg.sender : null;
+
+        if (!emailToCheck) {
+          const parts = id.split('_');
+          if (parts.length > 1 && parts[1].includes('@') && parts[1] !== user.email) {
+            emailToCheck = parts[1];
+          }
+        }
+
+        if (emailToCheck && !contactNames[emailToCheck]) {
+          const realId = id.split('_')[0];
+          const chatItem = listings.find(l => l.id === realId) || requests.find(r => r.id === realId);
+
+          if (chatItem && (chatItem.seller === emailToCheck || chatItem.user === emailToCheck) && (chatItem.sellerName || chatItem.userName)) {
+            // Known
+          } else {
+            unknownEmails.add(emailToCheck);
+          }
+        }
+      });
+
+      if (unknownEmails.size === 0) return;
+
+      // 2. Fetch Profiles for unknown emails
+      const newNames = {};
+      await Promise.all(Array.from(unknownEmails).slice(0, 10).map(async (email) => {
+        try {
+          const profile = await getUserProfile(email);
+          if (profile && (profile.displayName || profile.username)) {
+            newNames[email] = profile.displayName || profile.username;
+          }
+        } catch (err) {
+          console.error("Name resolution failed for:", email, err);
+        }
+      }));
+
+      if (Object.keys(newNames).length > 0) {
+        setContactNames(prev => ({ ...prev, ...newNames }));
+      }
+    };
+
+    if (Object.keys(inboxGroups).length > 0) {
+      resolveNames();
+    }
+  }, [inboxGroups, user, contactNames]);
 
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
@@ -1378,27 +1435,36 @@ export default function App() {
                 let displayName = "User";
                 let otherEmail = null;
 
-                // 1. Try to find the OTHER person in the message history (Most accurate/real-time)
+                // 1. Try to find the OTHER person in the message history
                 const otherMsg = msgs.find(m => m.sender !== user.email && m.sender !== 'System');
+
                 if (otherMsg) {
-                  displayName = otherMsg.sender.split('@')[0];
                   otherEmail = otherMsg.sender;
                 } else {
-                  // 2. Fallback Logic (If no messages from them yet)
+                  // Fallback to Owner
                   const ownerEmail = chatItem?.seller || chatItem?.user;
-
-                  if (ownerEmail && ownerEmail !== user.email) {
-                    // I am the Visitor/Buyer -> Show Owner Name
-                    displayName = chatItem?.sellerName || chatItem?.userName || ownerEmail.split('@')[0];
-                    otherEmail = ownerEmail;
-                  } else {
-                    // I am the Owner -> Show Buyer Name (Extract from Composite ID if possible)
-                    // Chat ID Format: "itemId_buyerEmail"
+                  if (ownerEmail && ownerEmail !== user.email) otherEmail = ownerEmail;
+                  else {
+                    // Composite ID fallback
                     const parts = id.split('_');
-                    if (parts.length > 1 && parts[1].includes('@')) {
-                      displayName = parts[1].split('@')[0];
-                      otherEmail = parts[1];
-                    }
+                    if (parts.length > 1 && parts[1].includes('@')) otherEmail = parts[1];
+                  }
+                }
+
+                // 2. Resolve Display Name
+                if (otherEmail) {
+                  // Start with what we knew (Email Prefix)
+                  displayName = otherEmail.split('@')[0];
+
+                  // Check if we have better info:
+                  // A. From Cache (Fetched Profile)
+                  if (contactNames[otherEmail]) {
+                    displayName = contactNames[otherEmail];
+                  }
+                  // B. From Listing/Request Data (If they are the owner)
+                  else if (chatItem && (chatItem.seller === otherEmail || chatItem.user === otherEmail)) {
+                    const knownName = chatItem.sellerName || chatItem.userName;
+                    if (knownName) displayName = knownName;
                   }
                 }
 
