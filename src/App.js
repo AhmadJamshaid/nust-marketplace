@@ -3,14 +3,14 @@ import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
   MessageCircle, X, Mail, Camera, Eye, EyeOff,
   Search, Sliders,
-  Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
+  Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, CheckCheck
 } from 'lucide-react';
 import {
   authStateListener, logoutUser, loginWithUsername, signUpUser,
   createListing, createRequest, deleteRequest,
   resendVerificationLink, sendMessage, listenToMessages,
-  listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
-  deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
+  getPublicProfile, uploadImageToCloudinary,
+  deleteListing, markListingSold, reportListing, updateUserProfile,
   listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, sendSystemMessageIfEmpty, searchUsersInDb, getAllUsers, getUserProfile,
   createChat, listenToUserChats, listenToListings
@@ -104,7 +104,9 @@ export default function App() {
   const [isSendingMsg, setIsSendingMsg] = useState(false);
   const messagesEndRef = useRef(null);
   const [hasUnread, setHasUnread] = useState(false);
-  const [unreadChats, setUnreadChats] = useState({});
+
+
+
 
   // Auth Inputs
   const [email, setEmail] = useState('');
@@ -270,19 +272,11 @@ export default function App() {
     if (user) {
       const unsubscribe = listenToUserChats(user.email, (chats) => {
         // "chats" contains the metadata docs directly.
-        // We no longer need to group raw messages! 
-        setInboxGroups(chats); // Keeping state name 'inboxGroups' for now to minimize diff, but it holds Chat Objects
+        setInboxGroups(chats);
 
-        // Unread logic needs to check 'read' status. 
-        // Wait, 'chats' doc has 'lastMessage'. We didn't persist 'unreadCount'.
-        // For strict "read/unread" we still need to check messages or rely on a field.
-        // Simplified: The User requested "Correct Behavior" for Naming. 
-        // I will assume standard "Unread" logic can be approximate or derived if critical.
-        // But for now, let's focus on the Naming requirement.
-
-        // Actually, we can fetch unread counts in parallel or if we kept "listenToAllMessages"?
-        // No, user explicitly said "Email must never appear", "topic in brackets".
-        // Let's stick to the Metadata.
+        // Update Global Unread Badge based on Metadata
+        const anyUnread = chats.some(c => c.unreadCounts && c.unreadCounts[user.email] > 0);
+        setHasUnread(anyUnread);
       });
       return () => unsubscribe();
     }
@@ -553,12 +547,7 @@ export default function App() {
     setIsEditingProfile(true);
   };
 
-  const handleDeleteChat = async (chatId) => {
-    if (window.confirm("Delete this conversation?")) {
-      await deleteChat(chatId);
-      setInboxGroups(prev => { const n = { ...prev }; delete n[chatId]; return n; });
-    }
-  };
+
 
   const handleRequestClick = (req) => {
     if (req.user !== user.email) {
@@ -595,7 +584,7 @@ export default function App() {
       // Format: listingID_buyerEmail
       const isMeSeller = listing.seller === user.email;
       const buyerEmail = isMeSeller ? targetUser.email : user.email;
-      const sellerEmail = listing.seller;
+
 
       chatId = `${listing.id}_${buyerEmail}`;
       chatTopic = listing.name;
@@ -1453,7 +1442,7 @@ export default function App() {
                         }}
                         className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white border-2 border-[#1a1c22] overflow-hidden ${unreadCount > 0 ? 'bg-blue-600' : 'bg-gray-700'}`}
                       >
-                        {photoURL ? <img src={photoURL} className="w-full h-full object-cover" /> : displayName[0]}
+                        {photoURL ? <img src={photoURL} className="w-full h-full object-cover" alt="Profile" /> : displayName[0]}
                       </div>
                       {unreadCount > 0 && <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-[#1a1c22] flex items-center justify-center text-[10px] font-bold text-white animate-bounce-short">{unreadCount}</span>}
                     </div>
