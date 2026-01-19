@@ -1587,9 +1587,31 @@ export default function App() {
                   {viewProfileUser?.email !== user?.email && (
                     <div className="flex justify-center gap-3 mt-4">
                       <button onClick={() => {
-                        /* Start Chat Logic */
-                        const existingChat = listings.find(l => l.seller === viewProfileUser.email) || { id: 'new', seller: viewProfileUser.email, sellerName: viewProfileUser.displayName, name: 'General Chat' };
-                        handleListingClick(existingChat);
+                        // ✅ CREATE PROPER DIRECT MESSAGE CHAT WITH METADATA
+                        const chatId = [user.email, viewProfileUser.email].sort().join('_');
+                        const chatMetadata = {
+                          chatId,
+                          type: 'direct',
+                          sourceName: `Chat with ${viewProfileUser.displayName || viewProfileUser.username || 'User'}`,
+                          participants: [
+                            {
+                              email: user.email,
+                              username: user.displayName || "User",
+                              role: 'user'
+                            },
+                            {
+                              email: viewProfileUser.email,
+                              username: viewProfileUser.displayName || viewProfileUser.username || "User",
+                              role: 'user'
+                            }
+                          ]
+                        };
+                        handleListingClick({
+                          id: chatId,
+                          seller: viewProfileUser.email,
+                          sellerName: viewProfileUser.displayName || viewProfileUser.username,
+                          metadata: chatMetadata
+                        });
                       }} className="px-6 py-2 bg-[#252830] hover:bg-blue-600 rounded-full text-sm font-bold transition-all flex items-center gap-2 border border-white/10">
                         <MessageCircle size={16} /> Message
                       </button>
