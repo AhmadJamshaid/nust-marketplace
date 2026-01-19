@@ -66,8 +66,7 @@ export default function App() {
   const [view, setView] = useState('market');
   const [listings, setListings] = useState([]);
   const [requests, setRequests] = useState([]);
-  // Contact Names Cache (Fix for Email Display)
-  const [contactNames, setContactNames] = useState({});
+
 
   // --- LOADING STATES ---
   const [isLoading, setIsLoading] = useState(true);
@@ -332,60 +331,10 @@ export default function App() {
     }
   }, [user, listings, requests]);
 
-  // --- CONTACT NAME RESOLUTION EFFECT ---
-  useEffect(() => {
-    const resolveNames = async () => {
-      const unknownEmails = new Set();
+  // --- CONTACT NAME RESOLUTION REMOVED ---
+  // This is now redundant because chat metadata provides usernames directly
+  // The contactNames cache is kept for backward compatibility but not actively populated
 
-      // 1. Scan Inbox Groups for emails we don't have a name for
-      Object.keys(inboxGroups).forEach(id => {
-        const msgs = inboxGroups[id];
-        const otherMsg = msgs.find(m => m.sender !== user.email && m.sender !== 'System');
-        let emailToCheck = otherMsg ? otherMsg.sender : null;
-
-        if (!emailToCheck) {
-          const parts = id.split('_');
-          if (parts.length > 1 && parts[1].includes('@') && parts[1] !== user.email) {
-            emailToCheck = parts[1];
-          }
-        }
-
-        if (emailToCheck && !contactNames[emailToCheck]) {
-          const realId = id.split('_')[0];
-          const chatItem = listings.find(l => l.id === realId) || requests.find(r => r.id === realId);
-
-          if (chatItem && (chatItem.seller === emailToCheck || chatItem.user === emailToCheck) && (chatItem.sellerName || chatItem.userName)) {
-            // Known
-          } else {
-            unknownEmails.add(emailToCheck);
-          }
-        }
-      });
-
-      if (unknownEmails.size === 0) return;
-
-      // 2. Fetch Profiles for unknown emails
-      const newNames = {};
-      await Promise.all(Array.from(unknownEmails).slice(0, 10).map(async (email) => {
-        try {
-          const profile = await getUserProfile(email);
-          if (profile && (profile.displayName || profile.username)) {
-            newNames[email] = profile.displayName || profile.username;
-          }
-        } catch (err) {
-          console.error("Name resolution failed for:", email, err);
-        }
-      }));
-
-      if (Object.keys(newNames).length > 0) {
-        setContactNames(prev => ({ ...prev, ...newNames }));
-      }
-    };
-
-    if (Object.keys(inboxGroups).length > 0) {
-      resolveNames();
-    }
-  }, [inboxGroups, user, contactNames]);
 
   // --- FILTER LOGIC (3-Factor) ---
   const filteredListings = useMemo(() => {
