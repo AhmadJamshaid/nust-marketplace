@@ -12,7 +12,8 @@ import {
   listenToAllMessages, getPublicProfile, uploadImageToCloudinary,
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
-  confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile
+  confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
+  listenToUserChats
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
@@ -106,6 +107,9 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const [hasUnread, setHasUnread] = useState(false);
   const [unreadChats, setUnreadChats] = useState({});
+  // ✅ CHAT METADATA: Source of truth for usernames (NO EMAIL FALLBACKS)
+  const [chatMetadataMap, setChatMetadataMap] = useState({});
+
 
   // Auth Inputs
   const [email, setEmail] = useState('');
@@ -241,6 +245,20 @@ export default function App() {
 
     return () => unsubscribe();
   }, [user]); // Added user dependency to fix "requires refresh" issue
+
+  // --- CHAT METADATA LISTENER (CRITICAL: Source of Truth for Usernames) ---
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = listenToUserChats(user.email, (chats) => {
+        const metaMap = {};
+        chats.forEach(chat => {
+          metaMap[chat.chatId] = chat;
+        });
+        setChatMetadataMap(metaMap);
+      });
+      return () => unsubscribe();
+    }
+  }, [user]);
 
   // --- CHAT REAL-TIME LISTENER WITH AUTO-SCROLL ---
   useEffect(() => {
@@ -643,8 +661,33 @@ export default function App() {
 
   const handleRequestClick = (req) => {
     if (req.user !== user.email) {
+      const chatId = req.id;
+
+      // ✅ CREATE CHAT METADATA WITH USERNAMES (NO EMAIL FALLBACKS)
+      const chatMetadata = {
+        chatId,
+        type: 'request',
+        sourceId: req.id,
+        sourceName: req.title,
+        participants: [
+          {
+            email: req.user,
+            username: req.userName || "Requester",  // ✅ From request
+            role: 'requester'
+          },
+          {
+            email: user.email,
+            username: user.displayName || "User",  // ✅ From current user
+            role: 'responder'
+          }
+        ]
+      };
+
       setActiveChat({
-        id: req.id, name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`, seller: req.user
+        id: chatId,
+        name: req.isMarketRun ? `Run: ${req.title}` : `Req: ${req.title}`,
+        seller: req.user,
+        metadata: chatMetadata
       });
     }
   };
@@ -652,9 +695,30 @@ export default function App() {
 
 
   const handleListingClick = (item) => {
-    setActiveChat(item);
-    // Mark as read immediately when opening
-    markChatRead(item.id, user.email);
+    const chatId = `${item.id}_${user.email}`;
+
+    // ✅ CREATE CHAT METADATA WITH USERNAMES (NO EMAIL FALLBACKS)
+    const chatMetadata = {
+      chatId,
+      type: 'listing',
+      sourceId: item.id,
+      sourceName: item.name,
+      participants: [
+        {
+          email: item.seller,
+          username: item.sellerName || "Seller",  // ✅ From listing
+          role: 'seller'
+        },
+        {
+          email: user.email,
+          username: user.displayName || "User",  // ✅ From current user
+          role: 'buyer'
+        }
+      ]
+    };
+
+    setActiveChat({ ...item, metadata: chatMetadata });
+    markChatRead(chatId, user.email);
   };
 
   const handleSendChat = async (e) => {
@@ -662,8 +726,8 @@ export default function App() {
     if (!newMsg.trim() || isSendingMsg) return;
     setIsSendingMsg(true);
     try {
-      await sendMessage(activeChat.id, user.email, newMsg);
-      // REMOVED: Automatic "Notification sent to WhatsApp" message
+      // ✅ Pass chat metadata to ensure usernames are stored before first message
+      await sendMessage(activeChat.id, user.email, newMsg, activeChat.metadata);
       setNewMsg('');
     } catch (err) {
       console.error("Send message error:", err);
@@ -1001,7 +1065,26 @@ export default function App() {
                           </div>
                           <button onClick={(e) => {
                             e.stopPropagation();
-                            handleListingClick({ id: 'new', seller: u.email, sellerName: u.name });
+                            // ✅ DIRECT MESSAGE: Create deterministic chat ID and metadata
+                            const chatId = [user.email, u.email].sort().join('_');
+                            const chatMetadata = {
+                              chatId,
+                              type: 'direct',
+                              sourceName: `Chat with ${u.name}`,
+                              participants: [
+                                {
+                                  email: user.email,
+                                  username: user.displayName || "User",
+                                  role: 'user'
+                                },
+                                {
+                                  email: u.email,
+                                  username: u.name,  // ✅ From search result
+                                  role: 'user'
+                                }
+                              ]
+                            };
+                            handleListingClick({ id: chatId, seller: u.email, sellerName: u.name, metadata: chatMetadata });
                           }} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-opacity shadow-lg shadow-blue-500/30" title="Message User">
                             <MessageCircle size={20} />
                           </button>
@@ -1408,77 +1491,49 @@ export default function App() {
             <h2 className="text-xl font-bold">Messages</h2>
             {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
               Object.keys(inboxGroups).map(id => {
-                // FIX: Chat ID can be composite "itemId_buyerEmail". extract real ID.
-                const realId = id.split('_')[0];
-                const chatItem = listings.find(l => l.id === realId) || requests.find(r => r.id === realId);
                 const msgs = inboxGroups[id];
+                const lastMsgActual = msgs[msgs.length - 1]; // Get last message (newest)
 
-                // Wait, listenToAllMessages callback: "messages" sorted? 
-                // In listenToAllMessages: "messages.sort" (ascending time).
-                // But in inboxGroups map, I usually want descending time for list?
-                // The current code used inboxGroups[id][0] as lastMessage.
-                // Let's verify sort order from my view_file? 
-                // lines 181: messages.sort((a,b) => timeA - timeB). Ascending.
-                // So [0] is the OLDEST message?
-                // Checking previous view_file of App.js...
-                // line 1092: formatTime(lastMessage.createdAt).
-                // If the user sees OLD message, that's bad.
-                // But let's stick to the styling change first.
-                // Actually, assuming msgs has at least 1 item.
-                const lastMsgActual = msgs[0]; // Newest (since sorted desc)
-                // Wait, I should verify the order in App.js logic again.
-                // line 253 listenToAllMessages.
+                // ✅ READ FROM CHAT METADATA (SINGLE SOURCE OF TRUTH)
+                const chatMeta = chatMetadataMap[id];
 
-                // Let's assume grouping preserves order.
-
-                // DATA LOGIC FOR HEADING (UNIVERSAL - NO DISCRIMINATION)
                 let displayName = "User";
+                let productName = "Chat";
                 let otherEmail = null;
 
-                // 1. Try to find the OTHER person in the message history
-                const otherMsg = msgs.find(m => m.sender !== user.email && m.sender !== 'System');
-
-                if (otherMsg) {
-                  otherEmail = otherMsg.sender;
+                if (chatMeta) {
+                  // ✅ Find the OTHER participant from metadata
+                  const otherParticipant = chatMeta.participants?.find(p => p.email !== user.email);
+                  if (otherParticipant) {
+                    displayName = otherParticipant.username;  // ✅ NO EMAIL FALLBACK
+                    otherEmail = otherParticipant.email;
+                  }
+                  productName = chatMeta.sourceName || "Chat";
                 } else {
-                  // Fallback to Owner
-                  const ownerEmail = chatItem?.seller || chatItem?.user;
-                  if (ownerEmail && ownerEmail !== user.email) otherEmail = ownerEmail;
-                  else {
-                    // Composite ID fallback
-                    const parts = id.split('_');
-                    if (parts.length > 1 && parts[1].includes('@')) otherEmail = parts[1];
+                  // TEMPORARY FALLBACK: For chats created before migration
+                  // This will only apply to old chats without metadata
+                  const realId = id.split('_')[0];
+                  const chatItem = listings.find(l => l.id === realId) || requests.find(r => r.id === realId);
+
+                  if (chatItem) {
+                    const ownerEmail = chatItem.seller || chatItem.user;
+                    if (ownerEmail && ownerEmail !== user.email) {
+                      displayName = chatItem.sellerName || chatItem.userName || "User";
+                      otherEmail = ownerEmail;
+                    }
+                    productName = chatItem.name || chatItem.title || "Chat";
                   }
                 }
 
-                // 2. Resolve Display Name
-                if (otherEmail) {
-                  // Start with what we knew (Email Prefix)
-                  displayName = otherEmail.split('@')[0];
-
-                  // Check if we have better info:
-                  // A. From Cache (Fetched Profile)
-                  if (contactNames[otherEmail]) {
-                    displayName = contactNames[otherEmail];
-                  }
-                  // B. From Listing/Request Data (If they are the owner)
-                  else if (chatItem && (chatItem.seller === otherEmail || chatItem.user === otherEmail)) {
-                    const knownName = chatItem.sellerName || chatItem.userName;
-                    if (knownName) displayName = knownName;
-                  }
-                }
-
-                // Formatting
-                displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-
-                const productName = chatItem?.name || chatItem?.title || "Chat";
                 const chatHeading = `${displayName} (${productName})`;
-
                 const unreadCounts = unreadChats;
 
                 return (
                   <div key={id} onClick={() => {
-                    setActiveChat(chatItem || { id, name: chatHeading });
+                    // Reconstruct chat object for setActiveChat
+                    const realId = id.split('_')[0];
+                    const chatItem = listings.find(l => l.id === realId) || requests.find(r => r.id === realId);
+                    setActiveChat(chatItem ? { ...chatItem, metadata: chatMeta } : { id, name: chatHeading, metadata: chatMeta });
                   }} className="glass-card p-4 rounded-xl flex gap-4 cursor-pointer hover:bg-white/5 relative group" title="Open Chat">
                     <div className="relative">
                       <div
@@ -1489,7 +1544,6 @@ export default function App() {
                         title="View Profile"
                         className={`w-12 h-12 rounded-full flex items-center justify-center ${unreadCounts[id] ? 'bg-blue-600' : 'bg-blue-600/20'} overflow-hidden hover:scale-110 transition-transform cursor-pointer border-2 border-transparent hover:border-blue-400`}
                       >
-                        {/* Try to show initial of DisplayName */}
                         <span className={`font-bold ${unreadCounts[id] ? 'text-white' : 'text-blue-400'}`}>{displayName[0]}</span>
                       </div>
                       {unreadCounts[id] > 0 && <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-[#1a1c22] flex items-center justify-center text-[10px] font-bold text-white animate-bounce-short">{unreadCounts[id]}</span>}
@@ -1803,58 +1857,36 @@ export default function App() {
                   }}
                 >
                   <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">
-                    {/* Logic for Header Name Initials */}
+                    {/* ✅ READ INITIAL FROM METADATA */}
                     {(() => {
-                      let name = "User";
-                      // 1. Try to find other person
-                      const otherMsg = chatMessages.find(m => m.sender !== user.email && m.sender !== 'System');
-                      if (otherMsg) {
-                        name = otherMsg.sender.split('@')[0];
-                      } else {
-                        // 2. Fallback
-                        const ownerEmail = activeChat.seller || activeChat.user;
-                        if (ownerEmail && ownerEmail !== user.email) {
-                          name = activeChat.sellerName || activeChat.userName || "Owner";
-                        } else {
-                          // I am owner. Try composite ID.
-                          const parts = activeChat.id ? activeChat.id.split('_') : [];
-                          if (parts.length > 1 && parts[1].includes('@')) {
-                            name = parts[1].split('@')[0];
-                          }
-                        }
+                      if (activeChat.metadata) {
+                        const otherParticipant = activeChat.metadata.participants?.find(p => p.email !== user.email);
+                        const name = otherParticipant?.username || "User";
+                        return name[0].toUpperCase();
                       }
+                      // TEMPORARY FALLBACK for old chats
+                      const name = activeChat.sellerName || activeChat.userName || "User";
                       return name[0].toUpperCase();
                     })()}
                   </div>
                   <div>
-                    {/* Logic for Header Name Display */}
+                    {/* ✅ READ NAME FROM METADATA */}
                     <h3 className="font-bold text-sm">
                       {(() => {
                         let name = "User";
+                        let topic = "Chat";
 
-                        // 1. Try to find other person (Universal)
-                        const otherMsg = chatMessages.find(m => m.sender !== user.email && m.sender !== 'System');
-                        if (otherMsg) {
-                          name = otherMsg.sender.split('@')[0];
+                        if (activeChat.metadata) {
+                          // ✅ Use metadata (ALWAYS CORRECT)
+                          const otherParticipant = activeChat.metadata.participants?.find(p => p.email !== user.email);
+                          name = otherParticipant?.username || "User";
+                          topic = activeChat.metadata.sourceName || activeChat.name || "Chat";
                         } else {
-                          // 2. Fallback
-                          const ownerEmail = activeChat.seller || activeChat.user;
-                          if (ownerEmail && ownerEmail !== user.email) {
-                            name = activeChat.sellerName || activeChat.userName || "Owner";
-                          } else {
-                            // I am owner. Try composite ID.
-                            const parts = activeChat.id ? activeChat.id.split('_') : [];
-                            if (parts.length > 1 && parts[1].includes('@')) {
-                              name = parts[1].split('@')[0];
-                            }
-                          }
+                          // TEMPORARY FALLBACK for old chats (before migration)
+                          name = activeChat.sellerName || activeChat.userName || "User";
+                          topic = activeChat.name || activeChat.title || "Chat";
                         }
 
-                        // Capitalize
-                        name = name.charAt(0).toUpperCase() + name.slice(1);
-
-                        // Append Topic
-                        const topic = activeChat.name || activeChat.title || "Chat";
                         return `${name} (${topic})`;
                       })()}
                     </h3>

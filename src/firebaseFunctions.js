@@ -5,7 +5,7 @@ import {
   verifyPasswordResetCode, confirmPasswordReset
 } from 'firebase/auth';
 import {
-  collection, addDoc, getDocs, query, where, onSnapshot,
+  collection, addDoc, getDocs, getDoc, query, where, onSnapshot,
   orderBy, serverTimestamp, doc, setDoc, updateDoc, increment, deleteDoc, limit, writeBatch
 } from 'firebase/firestore';
 
@@ -146,8 +146,59 @@ export const listenToRequests = (callback) => {
   });
 };
 
+// --- CHAT METADATA (IDENTITY SYSTEM) ---
+// This ensures usernames are ALWAYS available and email addresses NEVER appear in UI
+
+export const createOrGetChat = async (chatId, chatData) => {
+  const chatRef = doc(db, 'chats', chatId);
+  const chatSnap = await getDoc(chatRef);
+
+  if (!chatSnap.exists()) {
+    // Create new chat metadata with participant usernames
+    await setDoc(chatRef, {
+      ...chatData,
+      chatId,
+      createdAt: serverTimestamp(),
+      lastMessageAt: serverTimestamp()
+    });
+    return chatData;
+  } else {
+    // Update last message time
+    await updateDoc(chatRef, { lastMessageAt: serverTimestamp() });
+    return chatSnap.data();
+  }
+};
+
+export const getChatMetadata = async (chatId) => {
+  const chatSnap = await getDoc(doc(db, 'chats', chatId));
+  return chatSnap.exists() ? chatSnap.data() : null;
+};
+
+export const listenToUserChats = (userEmail, callback) => {
+  // Listen to all chats - we'll filter client-side since Firestore doesn't support
+  // array-contains queries on complex objects
+  const q = query(collection(db, 'chats'), orderBy('lastMessageAt', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const allChats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Filter for chats where user is a participant
+    const userChats = allChats.filter(chat =>
+      chat.participants?.some(p => p.email === userEmail)
+    );
+    callback(userChats);
+  }, (error) => {
+    console.error("Chat metadata listener error:", error);
+    callback([]);
+  });
+};
+
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
-export const sendMessage = async (chatId, sender, text) => {
+export const sendMessage = async (chatId, sender, text, chatMetadata = null) => {
+  // CRITICAL: Ensure chat metadata exists BEFORE sending message
+  // This guarantees usernames are stored and email NEVER appears in UI
+  if (chatMetadata) {
+    await createOrGetChat(chatId, chatMetadata);
+  }
+
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
 
