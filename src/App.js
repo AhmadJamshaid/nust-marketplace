@@ -1923,7 +1923,10 @@ export default function App() {
         <NavBtn icon={Mail} active={view === 'inbox'} onClick={() => setView('inbox')} title="Inbox" hasUnread={hasUnread} />
         <NavBtn icon={Plus} active={view === 'post'} onClick={() => setView('post')} title="Sell Item" />
         <NavBtn icon={ClipboardList} active={view === 'requests'} onClick={() => setView('requests')} title="Community Board" />
-        <NavBtn icon={User} active={view === 'profile'} onClick={() => setView('profile')} title="My Profile" />
+        <NavBtn icon={User} active={view === 'profile'} onClick={() => {
+          setViewProfileUser(user);  // ✅ Reset to current user
+          setView('profile');
+        }} title="My Profile" />
       </div>
 
       {/* RENTAL STATUS MODAL */}
