@@ -1016,24 +1016,25 @@ export default function App() {
                             e.stopPropagation();
                             // ✅ DIRECT MESSAGE: Create deterministic chat ID and metadata
                             const chatId = [user.email, u.email].sort().join('_');
+                            const userName = u.name || u.displayName || u.username || u.email?.split('@')[0] || 'User';
                             const chatMetadata = {
                               chatId,
                               type: 'direct',
-                              sourceName: `Chat with ${u.name}`,
+                              sourceName: `Chat with ${userName}`,
                               participants: [
                                 {
                                   email: user.email,
-                                  username: user.displayName || "User",
+                                  username: user.displayName || user.username || "User",
                                   role: 'user'
                                 },
                                 {
                                   email: u.email,
-                                  username: u.name,  // ✅ From search result
+                                  username: userName,
                                   role: 'user'
                                 }
                               ]
                             };
-                            handleListingClick({ id: chatId, seller: u.email, sellerName: u.name, metadata: chatMetadata });
+                            handleListingClick({ id: chatId, seller: u.email, sellerName: userName, metadata: chatMetadata });
                           }} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-opacity shadow-lg shadow-blue-500/30" title="Message User">
                             <MessageCircle size={20} />
                           </button>
@@ -1589,19 +1590,20 @@ export default function App() {
                       <button onClick={() => {
                         // ✅ CREATE PROPER DIRECT MESSAGE CHAT WITH METADATA
                         const chatId = [user.email, viewProfileUser.email].sort().join('_');
+                        const otherUserName = viewProfileUser?.displayName || viewProfileUser?.username || viewProfileUser?.email?.split('@')[0] || 'User';
                         const chatMetadata = {
                           chatId,
                           type: 'direct',
-                          sourceName: `Chat with ${viewProfileUser.displayName || viewProfileUser.username || 'User'}`,
+                          sourceName: `Chat with ${otherUserName}`,
                           participants: [
                             {
                               email: user.email,
-                              username: user.displayName || "User",
+                              username: user.displayName || user.username || "User",
                               role: 'user'
                             },
                             {
                               email: viewProfileUser.email,
-                              username: viewProfileUser.displayName || viewProfileUser.username || "User",
+                              username: otherUserName,
                               role: 'user'
                             }
                           ]
@@ -1609,7 +1611,7 @@ export default function App() {
                         handleListingClick({
                           id: chatId,
                           seller: viewProfileUser.email,
-                          sellerName: viewProfileUser.displayName || viewProfileUser.username,
+                          sellerName: otherUserName,
                           metadata: chatMetadata
                         });
                       }} className="px-6 py-2 bg-[#252830] hover:bg-blue-600 rounded-full text-sm font-bold transition-all flex items-center gap-2 border border-white/10">
