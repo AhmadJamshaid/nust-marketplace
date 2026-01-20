@@ -224,25 +224,29 @@ export default function App() {
 
   // --- REAL-TIME REQUESTS LISTENER ---
   useEffect(() => {
-    // Re-subscribe when user changes to ensure we have latest permissions/data
-    const unsubscribe = listenToRequests((reqs) => {
-      setRequests(reqs);
+    if (user) {
+      // Re-subscribe when user changes to ensure we have latest permissions/data
+      const unsubscribe = listenToRequests((reqs) => {
+        setRequests(reqs);
 
-      // --- LAZY CLEANUP: Physically delete expired requests ---
-      // This ensures Backend Deletion without a dedicated server cron job.
-      reqs.forEach(req => {
-        if (req.expiresAt) {
-          const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
-          if (expiry < new Date()) {
-            // It is expired but still in DB. Delete it physically.
-            console.log(`Lazy Deleting Expired Request: ${req.id}`);
-            deleteRequest(req.id);
+        // --- LAZY CLEANUP: Physically delete expired requests ---
+        // This ensures Backend Deletion without a dedicated server cron job.
+        reqs.forEach(req => {
+          if (req.expiresAt) {
+            const expiry = req.expiresAt.toDate ? req.expiresAt.toDate() : new Date(req.expiresAt);
+            if (expiry < new Date()) {
+              // It is expired but still in DB. Delete it physically.
+              console.log(`Lazy Deleting Expired Request: ${req.id}`);
+              deleteRequest(req.id);
+            }
           }
-        }
+        });
       });
-    });
 
-    return () => unsubscribe();
+      return () => unsubscribe();
+    } else {
+      setRequests([]);
+    }
   }, [user]); // Added user dependency to fix "requires refresh" issue
 
   // --- CHAT METADATA LISTENER (CRITICAL: Source of Truth for Usernames) ---
@@ -309,7 +313,10 @@ export default function App() {
           // If I am listed as a participant in the metadata, I MUST see this chat.
           const isParticipantInMetadata = chatMetadataMap[chatId]?.participants?.some(p => p.email === user.email);
 
-          if (isSeller || isRequester || hasParticipated || isParticipantInMetadata) {
+          // ✅ DELETION CHECK (WhatsApp Style)
+          const isDeletedByMe = chatMetadataMap[chatId]?.deletedBy?.includes(user.email);
+
+          if ((isSeller || isRequester || hasParticipated || isParticipantInMetadata) && !isDeletedByMe) {
             relevantGroups[chatId] = groupMsgs;
           }
         });
@@ -608,7 +615,7 @@ export default function App() {
 
   const handleDeleteChat = async (chatId) => {
     if (window.confirm("Delete this conversation?")) {
-      await deleteChat(chatId);
+      await deleteChat(chatId, user.email);
       setInboxGroups(prev => { const n = { ...prev }; delete n[chatId]; return n; });
     }
   };

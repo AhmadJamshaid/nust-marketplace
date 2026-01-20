@@ -6,7 +6,7 @@ import {
 } from 'firebase/auth';
 import {
   collection, addDoc, getDocs, getDoc, query, where, onSnapshot,
-  orderBy, serverTimestamp, doc, setDoc, updateDoc, increment, deleteDoc, limit, writeBatch
+  orderBy, serverTimestamp, doc, setDoc, updateDoc, increment, deleteDoc, limit, writeBatch, arrayUnion
 } from 'firebase/firestore';
 
 export const authStateListener = (callback) => onAuthStateChanged(auth, callback);
@@ -159,12 +159,17 @@ export const createOrGetChat = async (chatId, chatData) => {
       ...chatData,
       chatId,
       createdAt: serverTimestamp(),
-      lastMessageAt: serverTimestamp()
+      lastMessageAt: serverTimestamp(),
+      deletedBy: [] // Initialize deletedBy array
     });
     return chatData;
   } else {
-    // Update last message time
-    await updateDoc(chatRef, { lastMessageAt: serverTimestamp() });
+    // Update last message time AND restore visibility (clear deletedBy)
+    // If a new message comes in, we want BOTH parties to see it.
+    await updateDoc(chatRef, {
+      lastMessageAt: serverTimestamp(),
+      deletedBy: [] // RESTORE VISIBILITY ON NEW ACTIVITY
+    });
     return chatSnap.data();
   }
 };
@@ -195,9 +200,10 @@ export const listenToUserChats = (userEmail, callback) => {
 export const sendMessage = async (chatId, sender, text, chatMetadata = null) => {
   // CRITICAL: Ensure chat metadata exists BEFORE sending message
   // This guarantees usernames are stored and email NEVER appears in UI
-  if (chatMetadata) {
-    await createOrGetChat(chatId, chatMetadata);
-  }
+
+  // Even if metadata exists, we MUST call this to clear 'deletedBy' (restore visibility)
+  // because createOrGetChat handles the "restore" logic inside its else block now.
+  await createOrGetChat(chatId, chatMetadata || {});
 
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
@@ -282,12 +288,30 @@ export const listenToAllMessages = (callback) => {
   });
 };
 
-export const deleteChat = async (chatId) => {
-  const q = query(collection(db, 'messages'), where('chatId', '==', chatId));
-  const snap = await getDocs(q);
-  const batch = writeBatch(db);
-  snap.docs.forEach((doc) => batch.delete(doc.ref));
-  await batch.commit();
+export const deleteChat = async (chatId, userEmail) => {
+  // LOGICAL DELETION (WhatsApp Style)
+  // Instead of deleting messages, we hide the chat from the specific user.
+  const chatRef = doc(db, 'chats', chatId);
+
+  // Ideally, we should check if it exists, but arrayUnion is safe (create if missing, but we expect it to exist)
+  // We use setDoc with merge or updateDoc. updateDoc fails if doc missing.
+  // Since we are deleting, the chat MUST exist.
+
+  await updateDoc(chatRef, {
+    deletedBy: arrayUnion(userEmail)
+  }).catch(async (err) => {
+    // If doc doesn't exist (legacy chat?), create it then delete it? 
+    // Or just ignore.
+    console.warn("Could not logical delete chat (metadata missing?):", err);
+
+    // Fallback: If metadata missing, maybe we SHOULD delete messages?
+    // But user asked for WhatsApp style. Let's create metadata if missing to support hiding.
+    await setDoc(chatRef, {
+      chatId,
+      deletedBy: [userEmail],
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  });
 };
 
 export const rateUser = async (targetUserEmail, ratingValue) => {
