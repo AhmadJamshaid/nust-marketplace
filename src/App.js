@@ -644,6 +644,21 @@ export default function App() {
 
 
   const handleListingClick = (item) => {
+    // ✅ CHECK FOR EXISTING METADATA (DIRECT MESSAGES)
+    // If metadata is already provided (e.g. from User Search or Profile), use it directly.
+    // This prevents overwriting sourceName with item.name (which is undefined for users)
+    // and prevents re-generating the wrong chatId.
+    if (item.metadata) {
+      setActiveChat({
+        id: item.metadata.chatId, // Use the ID from metadata (e.g. email_email)
+        ...item, // Keep other props if any
+        metadata: item.metadata
+      });
+      markChatRead(item.metadata.chatId, user.email);
+      return;
+    }
+
+    // --- DEFAULT: LISTING CHAT FALLBACK ---
     const chatId = `${item.id}_${user.email}`;
 
     // ✅ CREATE CHAT METADATA WITH USERNAMES (NO EMAIL FALLBACKS)
