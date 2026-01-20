@@ -284,6 +284,7 @@ export default function App() {
   }, [activeChat, user]);
 
   // --- INBOX LISTENER WITH UNREAD DETECTION ---
+  // --- INBOX LISTENER WITH UNREAD DETECTION ---
   useEffect(() => {
     if (user) {
       const unsubscribe = listenToAllMessages((msgs) => {
@@ -304,7 +305,11 @@ export default function App() {
           // This allows "Buyers" (who are not sellers/requesters) to see the chat and replies
           const hasParticipated = groupMsgs.some(m => m.sender === user.email);
 
-          if (isSeller || isRequester || hasParticipated) {
+          // ✅ METADATA FIX: Specific check for Direct Messages (Source of Truth)
+          // If I am listed as a participant in the metadata, I MUST see this chat.
+          const isParticipantInMetadata = chatMetadataMap[chatId]?.participants?.some(p => p.email === user.email);
+
+          if (isSeller || isRequester || hasParticipated || isParticipantInMetadata) {
             relevantGroups[chatId] = groupMsgs;
           }
         });
@@ -329,7 +334,7 @@ export default function App() {
       });
       return () => unsubscribe();
     }
-  }, [user, listings, requests]);
+  }, [user, listings, requests, chatMetadataMap]);
 
   // --- CONTACT NAME RESOLUTION REMOVED ---
   // This is now redundant because chat metadata provides usernames directly
