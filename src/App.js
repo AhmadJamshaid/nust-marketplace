@@ -1902,7 +1902,7 @@ export default function App() {
                   </div>
                 )}
                 {chatMessages.map(m => (
-                  <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-start' : 'justify-end'}`}>
+                  <div key={m.id} className={`flex ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'justify-end' : 'justify-start'}`}>
                     <div className={`p-3 rounded-2xl text-sm max-w-[80%] break-words ${m.sender.toLowerCase() === user.email.toLowerCase() ? 'bg-blue-600 text-white' : m.sender === 'System' ? 'bg-green-600/20 text-green-300 text-center' : 'bg-[#252830] text-gray-200'}`}>
                       {m.text}
                       <div className="text-[9px] opacity-70 text-right mt-1 flex justify-end items-center gap-1">
