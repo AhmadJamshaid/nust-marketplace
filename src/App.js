@@ -137,8 +137,10 @@ export default function App() {
   const [editPic, setEditPic] = useState(null);
 
   // Listing Inputs
-  const [itemName, setItemName] = useState('');
-  const [itemPrice, setItemPrice] = useState('');
+  const [activeProduct, setActiveProduct] = useState(null); // New: for detailed product view
+  // Terms Modal State
+  const [showTermsModal, setShowTermsModal] = useState(false);
+
   const [itemDesc, setItemDesc] = useState('');
   const [listingType, setListingType] = useState('SELL');
   const [rentalPeriod, setRentalPeriod] = useState('Week'); // Day, Week, Month
@@ -147,7 +149,8 @@ export default function App() {
   const [imageFile, setImageFile] = useState(null); // Keep for backward compat or single view
   const [productImages, setProductImages] = useState([]); // New: for multiple images
   const [isUploading, setIsUploading] = useState(false);
-  const [activeProduct, setActiveProduct] = useState(null); // New: for detailed product view
+  // activeProduct was redeclared here, removed.
+
 
   // Request Input (Community Board)
   const [reqTitle, setReqTitle] = useState('');
@@ -749,6 +752,41 @@ export default function App() {
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
         <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
+          {/* TERMS MODAL OVERLAY */}
+          {showTermsModal && (
+            <div className="absolute inset-0 z-50 bg-[#1a1c22] rounded-3xl p-6 flex flex-col animate-fade-in">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="text-blue-500" /> Terms & Conditions
+                </h3>
+                <button onClick={() => setShowTermsModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={20} className="text-gray-400 hover:text-white" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2 text-sm text-gray-300 custom-scrollbar">
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-blue-400">You Deal Yourself</h4>
+                  <p>Buyers and sellers will both be from NUST. This platform's service is only to connect them. They will have to communicate and trade on their own. This platform is not responsible for payments, exchanges, or disputes.</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-green-400">Privacy</h4>
+                  <p>Your profile (except Whatsapp no.) will be visible to other students you interact with. We don’t share your info outside the platform.</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-yellow-400">No Spam or Fake Posts</h4>
+                  <p>Only real listings. No duplicate, misleading, or inappropriate content.</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-red-400">No Liability</h4>
+                  <p>We provide the platform only. We do NOT guarantee items, quality, or successful trades.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowTermsModal(false)} className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors">
+                I Understand
+              </button>
+            </div>
+          )}
+
           <div className="text-center mb-8">
             <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-[#003366] to-[#2563eb] shadow-lg shadow-blue-500/30 mb-4 animate-float">
               <ShoppingBag className="text-white" size={32} />
@@ -800,7 +838,10 @@ export default function App() {
                   <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Create Strong Password" autoComplete="new-password" />
                   <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10} /> Use a new password, NOT your NUST email password.</p>
                   <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required autoComplete="name" />
-                  <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required autoComplete="tel" />
+                  <div>
+                    <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required autoComplete="tel" />
+                    <p className="text-[10px] text-gray-500 mt-1 ml-1 flex items-center gap-1"><ShieldCheck size={10} /> Your number won't be shared anywhere.</p>
+                  </div>
                   <select className={inputClass} value={department} onChange={e => setDepartment(e.target.value)}>
                     <option value="SEECS">SEECS</option><option value="SMME">SMME</option><option value="NBS">NBS</option><option value="S3H">S3H</option><option value="SADA">SADA</option><option value="SCME">SCME</option>
                   </select>
@@ -819,9 +860,9 @@ export default function App() {
                 </>
               )}
               {!isLogin && (
-                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer mt-2">
+                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer mt-2 select-none">
                   <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} className="rounded border-gray-600 bg-transparent" />
-                  <span>I agree to the <span className="text-blue-400">Terms</span> & <span className="text-blue-400">Privacy</span></span>
+                  <span>I agree to the <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Terms</span> & <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Privacy</span></span>
                 </label>
               )}
               <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
