@@ -137,7 +137,10 @@ export default function App() {
   const [editPic, setEditPic] = useState(null);
 
   // Listing Inputs
+  const [itemName, setItemName] = useState('');
+  const [itemPrice, setItemPrice] = useState('');
   const [activeProduct, setActiveProduct] = useState(null); // New: for detailed product view
+
   // Terms Modal State
   const [showTermsModal, setShowTermsModal] = useState(false);
 
