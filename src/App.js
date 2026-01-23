@@ -1469,7 +1469,7 @@ export default function App() {
             {Object.keys(inboxGroups).length === 0 ? <p className="text-gray-500 text-center py-10">No messages yet.</p> :
               Object.keys(inboxGroups).map(id => {
                 const msgs = inboxGroups[id];
-                const lastMsgActual = msgs[msgs.length - 1]; // Get last message (newest)
+                const lastMsgActual = msgs[0]; // Get last message (newest - query is DESC)
 
                 // ✅ READ FROM CHAT METADATA (SINGLE SOURCE OF TRUTH)
                 const chatMeta = chatMetadataMap[id];
@@ -1477,6 +1477,7 @@ export default function App() {
                 let displayName = "User";
                 let productName = "Chat";
                 let otherEmail = null;
+                let isDirectChat = false;
 
                 if (chatMeta) {
                   // ✅ Find the OTHER participant from metadata
@@ -1486,6 +1487,7 @@ export default function App() {
                     otherEmail = otherParticipant.email;
                   }
                   productName = chatMeta.sourceName || "Chat";
+                  if (chatMeta.type === 'direct') isDirectChat = true;
                 } else {
                   // TEMPORARY FALLBACK: For chats created before migration
                   // This will only apply to old chats without metadata
@@ -1502,7 +1504,8 @@ export default function App() {
                   }
                 }
 
-                const chatHeading = `${displayName} (${productName})`;
+                // ✅ FIX: If direct chat, ONLY show name. Else show Name (Item)
+                const chatHeading = isDirectChat ? displayName : `${displayName} (${productName})`;
                 const unreadCounts = unreadChats;
 
                 return (
