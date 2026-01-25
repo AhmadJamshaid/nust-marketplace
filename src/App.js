@@ -794,10 +794,10 @@ export default function App() {
           )}
 
           <div className="text-center mb-8">
-            <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-[#003366] to-[#2563eb] shadow-lg shadow-blue-500/30 mb-4 animate-float">
-              <img src="/logo.png" className="w-8 h-8 object-contain" alt="Logo" />
+            <div className="mb-4 animate-float">
+              <img src="/logo.png" className="w-24 h-24 object-contain mx-auto" alt="Logo" />
             </div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] bg-clip-text text-transparent tracking-widest mb-1" style={{ fontFamily: 'Cinzel, serif' }}>MHENZO</h1>
+            <h1 className="text-6xl font-bold bg-gradient-to-b from-[#FFD700] via-[#FDB931] to-[#C49102] bg-clip-text text-transparent tracking-widest mb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] filter brightness-125" style={{ fontFamily: 'Cinzel, serif' }}>MHENZO</h1>
             <p className="text-blue-300/80 text-sm tracking-widest uppercase">The NUST Exclusive Marketplace</p>
           </div>
           {user ? (
@@ -897,10 +897,8 @@ export default function App() {
       <nav className="sticky top-0 z-50 glass border-b-0 border-b-white/5 bg-[#050505]/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
-            <div className="bg-gradient-to-tr from-[#003366] to-[#3b82f6] p-1.5 rounded-lg">
-              <img src="/logo.png" className="w-5 h-5 object-contain" alt="Logo" />
-            </div>
-            <span className="font-bold text-xl tracking-widest bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] bg-clip-text text-transparent" style={{ fontFamily: 'Cinzel, serif' }}>MHENZO</span>
+            <img src="/logo.png" className="w-8 h-8 object-contain drop-shadow-md" alt="Logo" />
+            <span className="font-bold text-xl tracking-widest bg-gradient-to-b from-[#FFD700] via-[#FDB931] to-[#C49102] bg-clip-text text-transparent drop-shadow-sm filter brightness-110" style={{ fontFamily: 'Cinzel, serif' }}>MHENZO</span>
           </div>
           <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">
             <LogOut size={20} />
