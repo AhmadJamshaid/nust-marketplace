@@ -795,10 +795,10 @@ export default function App() {
 
           <div className="text-center mb-8">
             <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-[#003366] to-[#2563eb] shadow-lg shadow-blue-500/30 mb-4 animate-float">
-              <img src="/logo.jpg" className="w-8 h-8 object-contain" alt="Logo" />
+              <img src="/logo.png" className="w-8 h-8 object-contain" alt="Logo" />
             </div>
-            <h1 className="text-4xl font-bold text-white tracking-tight mb-1">Samaan Share</h1>
-            <p className="text-blue-300/80 text-sm">The NUST Exclusive Marketplace</p>
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] bg-clip-text text-transparent tracking-widest mb-1" style={{ fontFamily: 'Cinzel, serif' }}>MHENZO</h1>
+            <p className="text-blue-300/80 text-sm tracking-widest uppercase">The NUST Exclusive Marketplace</p>
           </div>
           {user ? (
             <div className="space-y-4 text-center">
@@ -887,7 +887,7 @@ export default function App() {
             </form>
           )}
         </div>
-      </div>
+      </div >
     );
   }
 
@@ -898,9 +898,9 @@ export default function App() {
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
             <div className="bg-gradient-to-tr from-[#003366] to-[#3b82f6] p-1.5 rounded-lg">
-              <img src="/logo.jpg" className="w-5 h-5 object-contain" alt="Logo" />
+              <img src="/logo.png" className="w-5 h-5 object-contain" alt="Logo" />
             </div>
-            <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">SAMAAN SHARE</span>
+            <span className="font-bold text-xl tracking-widest bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] bg-clip-text text-transparent" style={{ fontFamily: 'Cinzel, serif' }}>MHENZO</span>
           </div>
           <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">
             <LogOut size={20} />
