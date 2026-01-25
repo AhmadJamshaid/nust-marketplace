@@ -864,7 +864,7 @@ export default function App() {
               )}
               {!isLogin && (
                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer mt-2 select-none">
-                  <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} className="rounded border-gray-600 bg-transparent" />
+                  <input type="checkbox" checked={acceptedTerms} onChange={e => { setAcceptedTerms(e.target.checked); if (e.target.checked) setShowTermsModal(true); }} className="rounded border-gray-600 bg-transparent" />
                   <span>I agree to the <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Terms</span> & <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Privacy</span></span>
                 </label>
               )}
@@ -1649,7 +1649,7 @@ export default function App() {
               ) : (
                 <>
                   <h2 className="text-2xl font-bold text-white">{viewProfileUser?.displayName || viewProfileUser?.username || "User"}</h2>
-                  {/* EMAIL HIDDEN globally. Only show Department/Reputation */}
+                  {viewProfileUser?.email && <p className="text-gray-400 text-sm mt-1">{viewProfileUser.email}</p>}
                   {viewProfileUser?.department && <p className="text-blue-400 text-xs font-bold mt-1">{viewProfileUser.department}</p>}
                   <div className="flex justify-center gap-1 mt-2 mb-4">
                     {[1, 2, 3, 4, 5].map(star => (
