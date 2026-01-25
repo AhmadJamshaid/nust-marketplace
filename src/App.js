@@ -754,47 +754,48 @@ export default function App() {
         {/* Auth UI */}
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
-        <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
-          {/* TERMS MODAL OVERLAY */}
-          {/* TERMS MODAL OVERLAY */}
-          {showTermsModal && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm rounded-3xl animate-fade-in">
-              <div className="bg-[#1a1c22] w-full max-h-full h-fit rounded-3xl p-6 flex flex-col shadow-2xl border border-white/10">
-                <div className="flex justify-between items-center mb-4 shrink-0">
-                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    <ShieldCheck className="text-blue-500" /> Terms & Conditions
-                  </h3>
-                  <button onClick={() => setShowTermsModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
-                    <X size={20} className="text-gray-400 hover:text-white" />
-                  </button>
-                </div>
-                <div className="overflow-y-auto space-y-4 pr-2 text-sm text-gray-300 custom-scrollbar shrink">
-                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-blue-400">You Deal Yourself</h4>
-                    <p>Buyers and sellers will both be from NUST. This platform's service is only to connect them. They will have to communicate and trade on their own. This platform is not responsible for payments, exchanges, or disputes.</p>
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-green-400">Privacy</h4>
-                    <p>Your profile (except Whatsapp no.) will be visible to other students you interact with. We don’t share your info outside the platform.</p>
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-yellow-400">No Spam or Fake Posts</h4>
-                    <p>Only real listings. No duplicate, misleading, or inappropriate content.</p>
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-red-400">No Liability</h4>
-                    <p>We provide the platform only. We do NOT guarantee items, quality, or successful trades.</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowTermsModal(false)} className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors shrink-0">
-                  I Understand
+
+        {/* TERMS MODAL OVERLAY - Moved to Fixed Position */}
+        {showTermsModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+            <div className="bg-[#1a1c22] w-full max-w-lg max-h-[90vh] rounded-3xl p-6 flex flex-col shadow-2xl border border-white/10 animate-scale-up">
+              <div className="flex justify-between items-center mb-4 shrink-0">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="text-blue-500" /> Terms & Conditions
+                </h3>
+                <button onClick={() => setShowTermsModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={20} className="text-gray-400 hover:text-white" />
                 </button>
               </div>
+              <div className="overflow-y-auto space-y-4 pr-2 text-sm text-gray-300 custom-scrollbar shrink">
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-blue-400">You Deal Yourself</h4>
+                  <p>Buyers and sellers will both be from NUST. This platform's service is only to connect them. They will have to communicate and trade on their own. This platform is not responsible for payments, exchanges, or disputes.</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-green-400">Privacy</h4>
+                  <p>Your profile (except Whatsapp no.) will be visible to other students you interact with. We don’t share your info outside the platform.</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-yellow-400">No Spam or Fake Posts</h4>
+                  <p>Only real listings. No duplicate, misleading, or inappropriate content.</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-red-400">No Liability</h4>
+                  <p>We provide the platform only. We do NOT guarantee items, quality, or successful trades.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowTermsModal(false)} className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors shrink-0">
+                I Understand
+              </button>
             </div>
-          )}
+          </div>
+        )}
+        <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
+
 
           <div className="text-center mb-8">
-            <div className="mb-6 animate-float">
+            <div className="mb-0 animate-float">
               {/* Logo is transparent PNG - Increased size */}
               <img src="/logo.png" className="w-32 h-32 object-contain mx-auto" alt="Logo" />
             </div>
