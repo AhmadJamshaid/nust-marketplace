@@ -756,8 +756,7 @@ export default function App() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
         <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
           {/* TERMS MODAL OVERLAY */}
-          {showTermsModal && (
-            {/* TERMS MODAL OVERLAY */ }
+          {/* TERMS MODAL OVERLAY */}
           {showTermsModal && (
             <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm rounded-3xl animate-fade-in">
               <div className="bg-[#1a1c22] w-full max-h-full h-fit rounded-3xl p-6 flex flex-col shadow-2xl border border-white/10">
