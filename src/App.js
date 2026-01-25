@@ -757,42 +757,46 @@ export default function App() {
         <div className="glass w-full max-w-md rounded-3xl p-8 relative z-10 border-t border-white/20 shadow-2xl animate-slide-up">
           {/* TERMS MODAL OVERLAY */}
           {showTermsModal && (
-            <div className="absolute inset-0 z-50 bg-[#1a1c22] rounded-3xl p-6 flex flex-col animate-fade-in">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <ShieldCheck className="text-blue-500" /> Terms & Conditions
-                </h3>
-                <button onClick={() => setShowTermsModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
-                  <X size={20} className="text-gray-400 hover:text-white" />
+            {/* TERMS MODAL OVERLAY */ }
+          {showTermsModal && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm rounded-3xl animate-fade-in">
+              <div className="bg-[#1a1c22] w-full max-h-full h-fit rounded-3xl p-6 flex flex-col shadow-2xl border border-white/10">
+                <div className="flex justify-between items-center mb-4 shrink-0">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <ShieldCheck className="text-blue-500" /> Terms & Conditions
+                  </h3>
+                  <button onClick={() => setShowTermsModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                    <X size={20} className="text-gray-400 hover:text-white" />
+                  </button>
+                </div>
+                <div className="overflow-y-auto space-y-4 pr-2 text-sm text-gray-300 custom-scrollbar shrink">
+                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-blue-400">You Deal Yourself</h4>
+                    <p>Buyers and sellers will both be from NUST. This platform's service is only to connect them. They will have to communicate and trade on their own. This platform is not responsible for payments, exchanges, or disputes.</p>
+                  </div>
+                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-green-400">Privacy</h4>
+                    <p>Your profile (except Whatsapp no.) will be visible to other students you interact with. We don’t share your info outside the platform.</p>
+                  </div>
+                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-yellow-400">No Spam or Fake Posts</h4>
+                    <p>Only real listings. No duplicate, misleading, or inappropriate content.</p>
+                  </div>
+                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                    <h4 className="font-bold text-white mb-1 text-xs uppercase text-red-400">No Liability</h4>
+                    <p>We provide the platform only. We do NOT guarantee items, quality, or successful trades.</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowTermsModal(false)} className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors shrink-0">
+                  I Understand
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2 text-sm text-gray-300 custom-scrollbar">
-                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-blue-400">You Deal Yourself</h4>
-                  <p>Buyers and sellers will both be from NUST. This platform's service is only to connect them. They will have to communicate and trade on their own. This platform is not responsible for payments, exchanges, or disputes.</p>
-                </div>
-                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-green-400">Privacy</h4>
-                  <p>Your profile (except Whatsapp no.) will be visible to other students you interact with. We don’t share your info outside the platform.</p>
-                </div>
-                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-yellow-400">No Spam or Fake Posts</h4>
-                  <p>Only real listings. No duplicate, misleading, or inappropriate content.</p>
-                </div>
-                <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                  <h4 className="font-bold text-white mb-1 text-xs uppercase text-red-400">No Liability</h4>
-                  <p>We provide the platform only. We do NOT guarantee items, quality, or successful trades.</p>
-                </div>
-              </div>
-              <button onClick={() => setShowTermsModal(false)} className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors">
-                I Understand
-              </button>
             </div>
           )}
 
           <div className="text-center mb-8">
             <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-[#003366] to-[#2563eb] shadow-lg shadow-blue-500/30 mb-4 animate-float">
-              <ShoppingBag className="text-white" size={32} />
+              <img src="/logo.jpg" className="w-8 h-8 object-contain" alt="Logo" />
             </div>
             <h1 className="text-4xl font-bold text-white tracking-tight mb-1">Samaan Share</h1>
             <p className="text-blue-300/80 text-sm">The NUST Exclusive Marketplace</p>
@@ -895,7 +899,7 @@ export default function App() {
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
             <div className="bg-gradient-to-tr from-[#003366] to-[#3b82f6] p-1.5 rounded-lg">
-              <ShoppingBag size={20} className="text-white" />
+              <img src="/logo.jpg" className="w-5 h-5 object-contain" alt="Logo" />
             </div>
             <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">SAMAAN SHARE</span>
           </div>
