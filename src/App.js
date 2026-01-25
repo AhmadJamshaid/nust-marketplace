@@ -794,12 +794,12 @@ export default function App() {
           )}
 
           <div className="text-center mb-8">
-            <div className="mb-4 animate-float">
-              {/* Logo has black bg which blends with #050505 page bg */}
-              <img src="/logo.png" className="w-28 h-28 object-contain mx-auto mix-blend-screen" alt="Logo" />
+            <div className="mb-6 animate-float">
+              {/* Logo is transparent PNG - Increased size */}
+              <img src="/logo.png" className="w-32 h-32 object-contain mx-auto" alt="Logo" />
             </div>
-            <h1 className="text-6xl font-black bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-transparent tracking-widest mb-2 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]" style={{ fontFamily: 'Outfit, sans-serif' }}>MHENZO</h1>
-            <p className="text-gray-400 text-sm tracking-[0.3em] uppercase font-bold">The NUST Exclusive Marketplace</p>
+            <h1 className="text-7xl font-bold bg-gradient-to-r from-sky-300 via-cyan-400 to-blue-600 bg-clip-text text-transparent tracking-wider mb-2 drop-shadow-[0_0_20px_rgba(6,182,212,0.5)]" style={{ fontFamily: 'Rajdhani, sans-serif' }}>MHENZO</h1>
+            <p className="text-gray-400 text-sm tracking-[0.2em] uppercase font-semibold">The NUST Exclusive Marketplace</p>
           </div>
           {user ? (
             <div className="space-y-4 text-center">
@@ -898,8 +898,8 @@ export default function App() {
       <nav className="sticky top-0 z-50 glass border-b-0 border-b-white/5 bg-[#050505]/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
-            <img src="/logo.png" className="w-8 h-8 object-contain mix-blend-screen" alt="Logo" />
-            <span className="font-extrabold text-2xl tracking-widest bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-transparent drop-shadow-sm" style={{ fontFamily: 'Outfit, sans-serif' }}>MHENZO</span>
+            <img src="/logo.png" className="w-9 h-9 object-contain" alt="Logo" />
+            <span className="font-bold text-3xl tracking-wide bg-gradient-to-r from-sky-300 via-cyan-400 to-blue-600 bg-clip-text text-transparent drop-shadow-sm" style={{ fontFamily: 'Rajdhani, sans-serif' }}>MHENZO</span>
           </div>
           <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">
             <LogOut size={20} />
