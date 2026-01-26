@@ -860,95 +860,94 @@ export default function App() {
                   } catch (err) {
                     alert(err.message);
                   }
-                }
                 }} className="space-y-4">
-              <PasswordInput
-                value={newResetPassword}
-                onChange={e => setNewResetPassword(e.target.value)}
-                placeholder="New Strong Password"
-                onValidation={setIsResetPasswordValid}
-              />
-              <button
-                disabled={!isResetPasswordValid}
-                className="w-full py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Change Password
-              </button>
-              <button type="button" onClick={() => { setIsForgot(false); setResetCode(null); }} className="w-full text-sm text-gray-400 hover:text-white">Cancel</button>
-            </form>
+                  <PasswordInput
+                    value={newResetPassword}
+                    onChange={e => setNewResetPassword(e.target.value)}
+                    placeholder="New Strong Password"
+                    onValidation={setIsResetPasswordValid}
+                  />
+                  <button
+                    disabled={!isResetPasswordValid}
+                    className="w-full py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Change Password
+                  </button>
+                  <button type="button" onClick={() => { setIsForgot(false); setResetCode(null); }} className="w-full text-sm text-gray-400 hover:text-white">Cancel</button>
+                </form>
+              ) : (
+                // --- SEND EMAIL FORM ---
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    await resetPassword(email);
+                  } catch (err) { console.error("Reset Password Error:", err); }
+                  alert("If an account exists with this email, a reset link has been sent.");
+                  setIsForgot(false);
+                }} className="space-y-4">
+                  <input className={inputClass} type="email" placeholder="Enter your email" value={email} onChange={e => setEmail(e.target.value)} required />
+                  <button className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-lg shadow-lg">Send Link</button>
+                  <button type="button" onClick={() => setIsForgot(false)} className="w-full text-sm text-gray-400 hover:text-white">Back to Login</button>
+                </form>
+              )}
+            </div>
           ) : (
-            // --- SEND EMAIL FORM ---
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await resetPassword(email);
-              } catch (err) { console.error("Reset Password Error:", err); }
-              alert("If an account exists with this email, a reset link has been sent.");
-              setIsForgot(false);
-            }} className="space-y-4">
-              <input className={inputClass} type="email" placeholder="Enter your email" value={email} onChange={e => setEmail(e.target.value)} required />
-              <button className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-lg shadow-lg">Send Link</button>
-              <button type="button" onClick={() => setIsForgot(false)} className="w-full text-sm text-gray-400 hover:text-white">Back to Login</button>
+            <form onSubmit={handleAuth} className="space-y-4">
+              {!isLogin && (
+                <>
+                  <div className="flex justify-center mb-2">
+                    <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
+                      <input type="file" onChange={e => setProfilePic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      {profilePic ? <img src={URL.createObjectURL(profilePic)} className="w-full h-full object-cover" alt="Profile Preview" /> : <Camera className="text-gray-500 group-hover:text-white" />}
+                    </div>
+                  </div>
+                  <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
+                  <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Create Strong Password" autoComplete="new-password" />
+                  <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10} /> Use a new password, NOT your NUST email password.</p>
+                  <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required autoComplete="name" />
+                  <div>
+                    <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required autoComplete="tel" />
+                    <p className="text-[10px] text-gray-500 mt-1 ml-1 flex items-center gap-1"><ShieldCheck size={10} /> Your number won't be shared anywhere.</p>
+                  </div>
+                  <select className={inputClass} value={department} onChange={e => setDepartment(e.target.value)}>
+                    <option value="SEECS">SEECS</option><option value="SMME">SMME</option><option value="NBS">NBS</option><option value="S3H">S3H</option><option value="SADA">SADA</option><option value="SCME">SCME</option>
+                  </select>
+                  <input className={inputClass} type="email" placeholder="NUST Email (std@nust.edu.pk)" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                </>
+              )}
+              {isLogin && (
+                <>
+                  <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
+                  <div className="relative">
+                    <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </>
+              )}
+              {!isLogin && (
+                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer mt-2 select-none">
+                  <input type="checkbox" checked={acceptedTerms} onChange={e => { setAcceptedTerms(e.target.checked); if (e.target.checked) setShowTermsModal(true); }} className="rounded border-gray-600 bg-transparent" />
+                  <span>I agree to the <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Terms</span> & <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Privacy</span></span>
+                </label>
+              )}
+              <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
+                {authLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
+              </button>
+              <div className="text-center pt-2">
+                <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-gray-400 hover:text-white transition-colors">
+                  {isLogin ? "New here? Sign Up" : "Have an account? Login"}
+                </button>
+                {isLogin && (
+                  <div className="mt-2">
+                    <button type="button" onClick={() => setIsForgot(true)} className="text-xs text-blue-400 hover:text-white transition-colors">Forgot Password?</button>
+                  </div>
+                )}
+              </div>
             </form>
           )}
         </div>
-        ) : (
-        <form onSubmit={handleAuth} className="space-y-4">
-          {!isLogin && (
-            <>
-              <div className="flex justify-center mb-2">
-                <div className="relative group w-20 h-20 rounded-full bg-[#202225] flex items-center justify-center overflow-hidden cursor-pointer border-2 border-dashed border-gray-600 hover:border-[#003366]">
-                  <input type="file" onChange={e => setProfilePic(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  {profilePic ? <img src={URL.createObjectURL(profilePic)} className="w-full h-full object-cover" alt="Profile Preview" /> : <Camera className="text-gray-500 group-hover:text-white" />}
-                </div>
-              </div>
-              <input className={inputClass} placeholder="Create Username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
-              <PasswordInput value={password} onChange={e => setPassword(e.target.value)} placeholder="Create Strong Password" autoComplete="new-password" />
-              <p className="text-[10px] text-gray-400 -mt-2 mb-2 flex items-center gap-1"><ShieldCheck size={10} /> Use a new password, NOT your NUST email password.</p>
-              <input className={inputClass} placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required autoComplete="name" />
-              <div>
-                <input className={inputClass} placeholder="WhatsApp (03...)" value={phone} onChange={e => setPhone(e.target.value)} required autoComplete="tel" />
-                <p className="text-[10px] text-gray-500 mt-1 ml-1 flex items-center gap-1"><ShieldCheck size={10} /> Your number won't be shared anywhere.</p>
-              </div>
-              <select className={inputClass} value={department} onChange={e => setDepartment(e.target.value)}>
-                <option value="SEECS">SEECS</option><option value="SMME">SMME</option><option value="NBS">NBS</option><option value="S3H">S3H</option><option value="SADA">SADA</option><option value="SCME">SCME</option>
-              </select>
-              <input className={inputClass} type="email" placeholder="NUST Email (std@nust.edu.pk)" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-            </>
-          )}
-          {isLogin && (
-            <>
-              <input className={inputClass} placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
-              <div className="relative">
-                <input type={showPassword ? "text" : "password"} className={`${inputClass} pr-10`} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </>
-          )}
-          {!isLogin && (
-            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer mt-2 select-none">
-              <input type="checkbox" checked={acceptedTerms} onChange={e => { setAcceptedTerms(e.target.checked); if (e.target.checked) setShowTermsModal(true); }} className="rounded border-gray-600 bg-transparent" />
-              <span>I agree to the <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Terms</span> & <span className="text-blue-400 hover:underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Privacy</span></span>
-            </label>
-          )}
-          <button disabled={authLoading} className="w-full py-3.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-500/20 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-wait">
-            {authLoading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
-          </button>
-          <div className="text-center pt-2">
-            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-sm text-gray-400 hover:text-white transition-colors">
-              {isLogin ? "New here? Sign Up" : "Have an account? Login"}
-            </button>
-            {isLogin && (
-              <div className="mt-2">
-                <button type="button" onClick={() => setIsForgot(true)} className="text-xs text-blue-400 hover:text-white transition-colors">Forgot Password?</button>
-              </div>
-            )}
-          </div>
-        </form>
-          )}
-      </div>
       </div >
     );
   }
