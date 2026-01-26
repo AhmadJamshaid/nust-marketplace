@@ -752,8 +752,7 @@ export default function App() {
     return (
       <div className="relative min-h-screen bg-[#050505] overflow-hidden flex items-center justify-center p-4">
         {/* Auth UI */}
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
+        {/* Background moved to global scope */}
 
         {/* TERMS MODAL OVERLAY - Moved to Fixed Position */}
         {showTermsModal && (
@@ -895,7 +894,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white pb-24 relative">
-      <div className="fixed top-0 left-0 right-0 h-96 bg-gradient-to-b from-[#003366]/20 to-transparent pointer-events-none" />
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
+        <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-[#003366]/20 to-transparent" />
+      </div>
       <nav className="sticky top-0 z-50 glass border-b-0 border-b-white/5 bg-[#050505]/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
@@ -1109,7 +1112,7 @@ export default function App() {
                               ]
                             };
                             handleListingClick({ id: chatId, seller: u.email, sellerName: userName, metadata: chatMetadata });
-                          }} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-opacity shadow-lg shadow-blue-500/30" title="Message User">
+                          }} className="p-3 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] rounded-full text-white transition-opacity shadow-lg shadow-blue-500/30" title="Message User">
                             <MessageCircle size={20} />
                           </button>
                         </div>
@@ -1258,7 +1261,7 @@ export default function App() {
               <textarea value={itemDesc} onChange={e => setItemDesc(e.target.value)} className={`${inputClass} h-32 resize-none`} placeholder="Description..." />
 
               {/* Restored Gradient Button */}
-              <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-blue-600 to-green-500 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-wait">
+              <button disabled={isUploading} className="w-full py-4 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-wait">
                 {isUploading ? "Uploading..." : "Publish to Market"}
               </button>
             </form>
@@ -1498,7 +1501,7 @@ export default function App() {
 
                         {req.user !== user.email && (
                           <div className="mt-2 pt-2 border-t border-white/5 flex justify-end">
-                            <button onClick={(e) => { e.stopPropagation(); handleRequestClick(req); }} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold shadow-lg shadow-blue-500/20 transition-all">
+                            <button onClick={(e) => { e.stopPropagation(); handleRequestClick(req); }} className="text-xs bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold shadow-lg shadow-blue-500/20 transition-all">
                               <MessageCircle size={14} /> Chat
                             </button>
                           </div>
@@ -1813,12 +1816,12 @@ export default function App() {
                     </div>
                     {/* OWNER CONTROLS FOR RENTAL */}
                     {user.email === activeProduct.seller && activeProduct.type === 'RENT' && (
-                      <button onClick={() => setRentalModalItem(activeProduct)} className="px-3 py-1.5 bg-blue-600 rounded-lg text-xs font-bold text-white hover:bg-blue-500 mr-2">
+                      <button onClick={() => setRentalModalItem(activeProduct)} className="px-3 py-1.5 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] rounded-lg text-xs font-bold text-white mr-2 shadow-lg">
                         Manage Rental
                       </button>
                     )}
                     {activeProduct.seller !== user.email && (
-                      <button onClick={() => { setActiveProduct(null); handleListingClick(activeProduct); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
+                      <button onClick={() => { setActiveProduct(null); handleListingClick(activeProduct); }} className="px-4 py-2 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2 shadow-lg">
                         <MessageCircle size={16} /> Chat
                       </button>
                     )}
@@ -1969,7 +1972,7 @@ export default function App() {
               </div>
               <form onSubmit={handleSendChat} className="p-3 bg-[#15161a] flex gap-2 border-t border-white/5">
                 <input value={newMsg} onChange={e => setNewMsg(e.target.value)} className={`${inputClass} flex-1`} placeholder="Type a message..." />
-                <button disabled={isSendingMsg} className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
+                <button disabled={isSendingMsg} className="p-3 bg-gradient-to-r from-[#003366] to-[#2563eb] hover:from-[#004499] hover:to-[#3b82f6] rounded-xl disabled:opacity-50 disabled:cursor-wait transition-colors" title="Send Message">
                   <Send size={18} />
                 </button>
               </form>
