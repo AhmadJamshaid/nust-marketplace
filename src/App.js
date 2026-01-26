@@ -13,7 +13,7 @@ import {
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
-  listenToUserChats
+  listenToUserChats, validatePassword
 } from './firebaseFunctions';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
@@ -122,6 +122,8 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isForgot, setIsForgot] = useState(false);
+  const [resetCode, setResetCode] = useState(null); // URL Code
+  const [newResetPassword, setNewResetPassword] = useState(''); // For New Password Input
 
 
   // Rental Management State
@@ -193,6 +195,15 @@ export default function App() {
 
   // --- INITIALIZATION WITH REAL-TIME LISTENERS ---
   useEffect(() => {
+    // URL PARAM HANDLING (Reset Password)
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const oobCode = params.get('oobCode');
+    if (mode === 'resetPassword' && oobCode) {
+      setResetCode(oobCode);
+      setIsForgot(true); // Reuse auth UI
+    }
+
     const unsubscribe = authStateListener(async (u) => {
       setUser(u);
       if (u) {
@@ -454,11 +465,11 @@ export default function App() {
       } else {
         if (!acceptedTerms) throw new Error("Please accept the Terms of Service.");
 
-        // Strong Password Check (Backend Double-Check)
-        // RegEx: 8 chars, 1 Upper, 1 Lower, 1 Number, 1 Special
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-        if (!passwordRegex.test(password)) {
-          throw new Error("Password does not meet security requirements.");
+        // Strict Validation using Shared Logic
+        try {
+          validatePassword(password);
+        } catch (e) {
+          throw new Error("Password invalid: " + e.message);
         }
 
         let photoURL = `https://api.dicebear.com/7.x/initials/svg?seed=${username}&backgroundColor=003366`;
@@ -605,6 +616,16 @@ export default function App() {
         department: editDept || userProfileData.department,
         photoURL: newPhotoURL
       };
+
+      // Validate Password if changing
+      if (editPassword) {
+        try {
+          validatePassword(editPassword);
+        } catch (e) {
+          throw new Error("New password invalid: " + e.message);
+        }
+      }
+
       await updateUserProfile(user.uid, updatedData, editPassword);
       setIsEditingProfile(false);
       alert("Profile Updated!");
@@ -750,7 +771,7 @@ export default function App() {
 
   if (!user || (user && !user.emailVerified)) {
     return (
-      <div className="relative min-h-screen bg-[#050505] overflow-hidden flex items-center justify-center p-4">
+      <div className="relative min-h-screen bg-[#020305] overflow-hidden flex items-center justify-center p-4">
         {/* Auth UI */}
         {/* Background moved to global scope */}
 
@@ -815,21 +836,44 @@ export default function App() {
           ) : isForgot ? (
             <div className="space-y-4">
               <div className="text-center mb-4">
-                <h2 className="text-xl font-bold text-white">Reset Password</h2>
-                <p className="text-sm text-gray-400">Enter your email to receive a reset link. Check Spam Folder if not received.</p>
+                <h2 className="text-xl font-bold text-white">{resetCode ? "Set New Password" : "Reset Password"}</h2>
+                <p className="text-sm text-gray-400">{resetCode ? "Enter your new strong password below." : "Enter your email to receive a reset link."}</p>
               </div>
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  await resetPassword(email);
-                } catch (err) { console.error("Reset Password Error:", err); }
-                alert("If an account exists with this email, a reset link has been sent.");
-                setIsForgot(false);
-              }} className="space-y-4">
-                <input className={inputClass} type="email" placeholder="Enter your email" value={email} onChange={e => setEmail(e.target.value)} required />
-                <button className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-lg shadow-lg">Send Link</button>
-                <button type="button" onClick={() => setIsForgot(false)} className="w-full text-sm text-gray-400 hover:text-white">Back to Login</button>
-              </form>
+
+              {resetCode ? (
+                // --- RESET PASSWORD FORM (With Code) ---
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    validatePassword(newResetPassword);
+                    await confirmReset(resetCode, newResetPassword);
+                    alert("Password Reset Successful! You can now login.");
+                    setIsForgot(false);
+                    setResetCode(null);
+                    window.location.href = window.location.origin; // Clear URL
+                  } catch (err) {
+                    alert(err.message);
+                  }
+                }} className="space-y-4">
+                  <PasswordInput value={newResetPassword} onChange={e => setNewResetPassword(e.target.value)} placeholder="New Strong Password" />
+                  <button className="w-full py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg">Change Password</button>
+                  <button type="button" onClick={() => { setIsForgot(false); setResetCode(null); }} className="w-full text-sm text-gray-400 hover:text-white">Cancel</button>
+                </form>
+              ) : (
+                // --- SEND EMAIL FORM ---
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    await resetPassword(email);
+                  } catch (err) { console.error("Reset Password Error:", err); }
+                  alert("If an account exists with this email, a reset link has been sent.");
+                  setIsForgot(false);
+                }} className="space-y-4">
+                  <input className={inputClass} type="email" placeholder="Enter your email" value={email} onChange={e => setEmail(e.target.value)} required />
+                  <button className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-lg shadow-lg">Send Link</button>
+                  <button type="button" onClick={() => setIsForgot(false)} className="w-full text-sm text-gray-400 hover:text-white">Back to Login</button>
+                </form>
+              )}
             </div>
           ) : (
             <form onSubmit={handleAuth} className="space-y-4">
@@ -893,7 +937,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white pb-24 relative">
+    <div className="min-h-screen bg-[#020305] text-white pb-24 relative">
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#003366] rounded-full blur-[120px] opacity-40 animate-pulse-glow"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3b82f6] rounded-full blur-[120px] opacity-30 animate-float-delayed"></div>
@@ -902,7 +946,7 @@ export default function App() {
       <nav className="sticky top-0 z-50 glass border-b-0 border-b-white/5 bg-[#050505]/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('market')}>
-            <img src="/logo.png" className="w-9 h-9 object-contain" alt="Logo" />
+            <img src="/logo.png" className="w-14 h-14 object-contain" alt="Logo" />
             <span className="font-bold text-3xl tracking-wide bg-gradient-to-r from-sky-300 via-cyan-400 to-blue-600 bg-clip-text text-transparent drop-shadow-sm" style={{ fontFamily: 'Rajdhani, sans-serif' }}>MHENZO</span>
           </div>
           <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">

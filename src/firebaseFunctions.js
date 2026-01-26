@@ -33,7 +33,7 @@ export const loginWithUsername = async (username, password) => {
 
 
 // --- HELPER --
-const validatePassword = (password) => {
+export const validatePassword = (password) => {
   const regex = /(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&]).{8,}/;
   if (!regex.test(password)) {
     throw new Error("Password must be 8+ chars, include Upper, Lower, Num, and Special char.");
