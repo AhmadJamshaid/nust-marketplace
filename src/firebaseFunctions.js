@@ -8,8 +8,39 @@ import {
   collection, addDoc, getDocs, getDoc, query, where, onSnapshot,
   orderBy, serverTimestamp, doc, setDoc, updateDoc, increment, deleteDoc, limit, writeBatch, arrayUnion
 } from 'firebase/firestore';
+import { getToken, onMessage } from 'firebase/messaging';
+import { messaging, VAPID_KEY } from './firebase';
 
 export const authStateListener = (callback) => onAuthStateChanged(auth, callback);
+
+// --- NOTIFICATIONS ---
+export const requestNotificationPermission = async (userUid) => {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+      if (token && userUid) {
+        // Save token to user profile
+        const tokenRef = doc(db, 'users', userUid, 'fcmTokens', token);
+        await setDoc(tokenRef, { token, createdAt: serverTimestamp() });
+        console.log("Notification token saved:", token);
+        return token;
+      }
+    } else {
+      console.log("Notification permission denied.");
+    }
+  } catch (error) {
+    console.error("Error requesting notification permission:", error);
+  }
+  return null;
+};
+
+export const onMessageListener = () =>
+  new Promise((resolve) => {
+    onMessage(messaging, (payload) => {
+      resolve(payload);
+    });
+  });
 
 // --- AUTH & USER ---
 export const checkUsernameUnique = async (username) => {

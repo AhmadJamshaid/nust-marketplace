@@ -13,8 +13,10 @@ import {
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
-  listenToUserChats, validatePassword
+  listenToUserChats, validatePassword, requestNotificationPermission
 } from './firebaseFunctions';
+import { InstallProvider } from './context/InstallContext';
+import InstallPopup from './components/InstallPopup';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
 
@@ -195,6 +197,7 @@ export default function App() {
 
   // Modals
   const [deleteModalItem, setDeleteModalItem] = useState(null);
+  const [installTrigger, setInstallTrigger] = useState(0); // Trigger for Install Popup
 
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
@@ -521,6 +524,7 @@ export default function App() {
       // No need to manually refresh - real-time listener will update
       setView('market');
       setItemName(''); setItemPrice(''); setImageFile(null); setProductImages([]); setItemDesc('');
+      setInstallTrigger(Date.now()); // Trigger Install Prompt
     } catch (err) { alert(err.message); }
     finally { setIsUploading(false); }
   };
@@ -584,6 +588,7 @@ export default function App() {
       // Reset Form
       setReqTitle(''); setReqDesc(''); setIsRequestUrgent(false);
       setExpiryVal(24); setExpiryUnit('hours'); setExpiryDate(''); setIsAutoDeleteEnabled(false);
+      setInstallTrigger(Date.now()); // Trigger Install Prompt
     } catch (err) { alert(err.message); }
     finally { setIsPostingReq(false); }
   };
@@ -737,6 +742,7 @@ export default function App() {
       // ✅ Pass chat metadata to ensure usernames are stored before first message
       await sendMessage(activeChat.id, user.email, newMsg, activeChat.metadata);
       setNewMsg('');
+      setInstallTrigger(Date.now()); // Trigger Install Prompt
     } catch (err) {
       console.error("Send message error:", err);
       alert("Failed to send message. Please try again.");
@@ -2059,6 +2065,8 @@ export default function App() {
           </div>
         )
       }
+
+      <InstallPopup triggerAction={installTrigger} />
 
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#15161a]/80 backdrop-blur-xl border border-white/10 p-1.5 rounded-full flex gap-1 shadow-2xl z-40">
         <NavBtn icon={ShoppingBag} active={view === 'market'} onClick={() => setView('market')} title="Marketplace" />
