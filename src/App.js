@@ -784,10 +784,32 @@ export default function App() {
   );
 
   if (isAuthChecking) return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <p className="text-gray-400 text-sm">Loading...</p>
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center relative overflow-hidden">
+      {/* Background Ambient Glow */}
+      <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-600/20 rounded-full blur-[100px] animate-pulse"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-purple-600/20 rounded-full blur-[100px] animate-pulse delay-1000"></div>
+
+      <div className="z-10 text-center flex flex-col items-center gap-4 animate-fade-in">
+        {/* Animated Logo */}
+        <div className="relative w-24 h-24 mb-2">
+          <div className="absolute inset-0 bg-blue-500/30 rounded-full blur-xl animate-ping-slow"></div>
+          <img src="/logo.png" alt="Logo" className="w-full h-full object-contain relative z-10 animate-float" />
+        </div>
+
+        {/* Animated Text */}
+        <div className="space-y-1">
+          <h1 className="font-bold text-5xl tracking-widest bg-gradient-to-r from-sky-300 via-cyan-400 to-blue-600 bg-clip-text text-transparent drop-shadow-lg animate-slide-up" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
+            MHENZO
+          </h1>
+          <p className="text-gray-500 text-xs tracking-[0.2em] uppercase animate-fade-in delay-300">Marketplace</p>
+        </div>
+
+        {/* Loading Indicator */}
+        <div className="mt-8 flex gap-2">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-100"></div>
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></div>
+        </div>
       </div>
     </div>
   );
