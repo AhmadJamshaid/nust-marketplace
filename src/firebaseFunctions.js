@@ -227,6 +227,55 @@ export const listenToUserChats = (userEmail, callback) => {
   });
 };
 
+// --- NOTIFICATION TRIGGER (CLIENT-SIDE WORKAROUND) ---
+// WARNING: In a real app, send notifications from a trusted backend environment (Cloud Functions).
+// Storing the Server Key in client-side code is not recommended for production security.
+const FCM_SERVER_KEY = "AIzaSyAm9TnIqrc4mjo-9EubLItRm4E1KThI0TI";
+
+const sendNotificationToUser = async (targetEmail, title, body) => {
+  if (!targetEmail) return;
+  try {
+    // 1. Get Target User's Token
+    const q = query(collection(db, 'users'), where('email', '==', targetEmail));
+    const userSnap = await getDocs(q);
+    if (userSnap.empty) return;
+
+    const userUid = userSnap.docs[0].id;
+    // Get tokens (might support multi-device)
+    const tokensSnap = await getDocs(collection(db, 'users', userUid, 'fcmTokens'));
+
+    if (tokensSnap.empty) return;
+
+    // Send to all checks
+    const sendPromises = tokensSnap.docs.map(async (tokenDoc) => {
+      const { token } = tokenDoc.data();
+
+      const message = {
+        to: token,
+        notification: {
+          title: title,
+          body: body,
+          icon: '/logo192.png',
+          click_action: window.location.origin
+        }
+      };
+
+      await fetch('https://fcm.googleapis.com/fcm/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'key=' + FCM_SERVER_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(message)
+      });
+    });
+
+    await Promise.all(sendPromises);
+  } catch (error) {
+    console.error("Failed to send notification:", error);
+  }
+};
+
 // --- CHAT (OPTIMIZED FOR INSTANT DELIVERY) ---
 export const sendMessage = async (chatId, sender, text, chatMetadata = null) => {
   // CRITICAL: Ensure chat metadata exists BEFORE sending message
@@ -234,7 +283,7 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
 
   // Even if metadata exists, we MUST call this to clear 'deletedBy' (restore visibility)
   // because createOrGetChat handles the "restore" logic inside its else block now.
-  await createOrGetChat(chatId, chatMetadata || {});
+  const chatData = await createOrGetChat(chatId, chatMetadata || {});
 
   // Use Date.now() for instant local timestamp, serverTimestamp for ordering
   const timestamp = new Date();
@@ -254,6 +303,21 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
     clientTimestamp: timestamp.toISOString(),
     read: false
   });
+
+  // --- TRIGGER NOTIFICATION ---
+  // Determine recipient
+  let recipientEmail = null;
+  if (chatMetadata && chatMetadata.participants) {
+    recipientEmail = chatMetadata.participants.find(p => p.email !== sender)?.email;
+  } else if (chatData && chatData.participants) {
+    recipientEmail = chatData.participants.find(p => p.email !== sender)?.email;
+  }
+
+  if (recipientEmail) {
+    // We don't have sender name readily available if not passed, try to use "New Message"
+    sendNotificationToUser(recipientEmail, "New Message", text);
+  }
+
 
   // 3. If first message, Add System Tip
   if (isFirstMessage) {

@@ -3,7 +3,7 @@ import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
   MessageCircle, X, Mail, Camera, Eye, EyeOff,
   Search, Sliders,
-  Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck
+  Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck, Download
 } from 'lucide-react';
 import {
   authStateListener, logoutUser, loginWithUsername, signUpUser,
@@ -16,6 +16,7 @@ import {
   listenToUserChats, validatePassword
 } from './firebaseFunctions';
 import InstallPopup from './components/InstallPopup';
+import { useInstallPrompt } from './context/InstallContext';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
 
@@ -197,6 +198,7 @@ export default function App() {
   // Modals
   const [deleteModalItem, setDeleteModalItem] = useState(null);
   const [installTrigger, setInstallTrigger] = useState(0); // Trigger for Install Popup
+  const { showInstallPrompt, isInstallAvailable } = useInstallPrompt();
 
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
@@ -366,6 +368,17 @@ export default function App() {
       return () => unsubscribe();
     }
   }, [user, listings, requests, chatMetadataMap]);
+  // --- APP BADGING (UNREAD COUNT ON ICON) ---
+  useEffect(() => {
+    if ('setAppBadge' in navigator) {
+      const totalUnread = Object.values(unreadChats).reduce((a, b) => a + b, 0);
+      if (totalUnread > 0) {
+        navigator.setAppBadge(totalUnread).catch(e => console.error(e));
+      } else {
+        navigator.clearAppBadge().catch(e => console.error(e));
+      }
+    }
+  }, [unreadChats]);
 
   // --- CONTACT NAME RESOLUTION REMOVED ---
   // This is now redundant because chat metadata provides usernames directly
@@ -1075,6 +1088,14 @@ export default function App() {
                   </div>
                 )}
               </div>
+              {/* Install Button */}
+              {isInstallAvailable && (
+                <button onClick={showInstallPrompt} className="px-4 rounded-xl border border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white flex items-center justify-center gap-2 transition-all" title="Install App">
+                  <Download size={18} />
+                  <span className="text-xs font-bold hidden sm:block">App</span>
+                </button>
+              )}
+
               <button onClick={() => setShowFilters(!showFilters)} className={`px-4 rounded-xl border flex items-center justify-center gap-2 transition-all ${showFilters ? 'bg-white text-black border-white' : 'bg-[#15161a] text-gray-400 border-white/10 hover:border-white/30'}`} title="Filter Options">
                 <Sliders size={18} />
                 <span className="text-xs font-bold hidden sm:block">Filters</span>
