@@ -13,9 +13,8 @@ import {
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
-  listenToUserChats, validatePassword, requestNotificationPermission
+  listenToUserChats, validatePassword
 } from './firebaseFunctions';
-import { InstallProvider } from './context/InstallContext';
 import InstallPopup from './components/InstallPopup';
 
 const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', 'Accessories', 'Study Material', 'Other'];
