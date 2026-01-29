@@ -262,13 +262,18 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
       };
 
       try {
-        await fetch('/api/send-notification', {
+        const response = await fetch('/api/send-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (!response.ok) throw new Error(`Server status: ${response.status}`);
       } catch (err) {
-        console.warn("API Notification Error (might be local dev):", err);
+        console.warn("API Notification Error (Likely need to DEPLOY to Vercel):", err);
+        // We suppress the error to not crash the whole batch, but we log it.
+        // For the test button specifically, we might want to propagate it?
+        // But this function is used by batch (map).
+        // Let's just log it loudly.
       }
     });
 
