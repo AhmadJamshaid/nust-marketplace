@@ -232,7 +232,8 @@ export const listenToUserChats = (userEmail, callback) => {
 // Storing the Server Key in client-side code is not recommended for production security.
 const FCM_SERVER_KEY = "AIzaSyAm9TnIqrc4mjo-9EubLItRm4E1KThI0TI";
 
-const sendNotificationToUser = async (targetEmail, title, body) => {
+// Update signature to accept dataOptions
+export const sendNotificationToUser = async (targetEmail, title, body, dataOptions = {}) => {
   if (!targetEmail) return;
   try {
     // 1. Get Target User's Token
@@ -256,7 +257,10 @@ const sendNotificationToUser = async (targetEmail, title, body) => {
           title: title,
           body: body,
           icon: '/logo192.png',
-          click_action: window.location.origin
+        },
+        data: {
+          chatId: dataOptions.chatId || "",
+          url: window.location.origin + (dataOptions.chatId ? '/?chatId=' + dataOptions.chatId : '')
         }
       };
 
@@ -315,7 +319,15 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
 
   if (recipientEmail) {
     // We don't have sender name readily available if not passed, try to use "New Message"
-    sendNotificationToUser(recipientEmail, "New Message", text);
+    // Pass chatId as an object property or extra arg if we redesign, but here we can hack it into body object if we change signature?
+    // Wait, sendNotificationToUser takes (email, title, body).
+    // Let's change the function signature above in previous step or just pass it in data.
+    // Actually, I can't easily change signature without breaking other calls (test button).
+    // Let's overload the 3rd argument or properly update the signature.
+    // I will update the signature in a separate step or just use a robust Way.
+    // Let's update sendNotificationToUser to accept an options object or just 4th arg.
+    // I prefer adding a 4th argument `data`
+    sendNotificationToUser(recipientEmail, "New Message", text, { chatId });
   }
 
 

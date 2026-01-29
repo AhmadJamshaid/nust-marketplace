@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShoppingBag, Plus, LogOut, User, ClipboardList, Send,
   MessageCircle, X, Mail, Camera, Eye, EyeOff,
-  Search, Sliders,
+  Search, Sliders, Bell,
   Zap, Clock, ShieldCheck, Trash2, Flag, CheckCircle, AlertCircle, Edit2, Save, XCircle, CheckCheck, Download
 } from 'lucide-react';
 import {
@@ -13,7 +13,7 @@ import {
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
-  listenToUserChats, validatePassword
+  listenToUserChats, validatePassword, requestNotificationPermission, sendNotificationToUser, getChatMetadata
 } from './firebaseFunctions';
 import InstallPopup from './components/InstallPopup';
 import { useInstallPrompt } from './context/InstallContext';
@@ -192,6 +192,7 @@ export default function App() {
   // --- PROFILE VIEW STATE ---
   const [viewProfileUser, setViewProfileUser] = useState(null); // The user object/email to view
   const [profileHighlightId, setProfileHighlightId] = useState(null); // ID to scroll to
+  const [notifPermission, setNotifPermission] = useState(Notification.permission); // Notification State
 
 
 
@@ -204,10 +205,12 @@ export default function App() {
 
   // --- INITIALIZATION WITH REAL-TIME LISTENERS ---
   useEffect(() => {
-    // URL PARAM HANDLING (Reset Password)
+    // URL PARAM HANDLING (Reset Password OR Deep Link Chat)
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
     const oobCode = params.get('oobCode');
+    const deepLinkChatId = params.get('chatId');
+
     if (mode === 'resetPassword' && oobCode) {
       setResetCode(oobCode);
       setIsForgot(true); // Reuse auth UI
@@ -218,6 +221,23 @@ export default function App() {
       if (u) {
         const profile = await getPublicProfile(u.email);
         setUserProfileData(profile);
+        // Trigger Install/Notify Popup on successful login
+        setInstallTrigger(Date.now());
+
+        // Handle Deep Link Chat Handling AFTER user is logged in
+        if (deepLinkChatId) {
+          // Fetch chat metadata
+          setIsLoading(true);
+          try {
+            const meta = await getChatMetadata(deepLinkChatId);
+            if (meta) {
+              setActiveChat({ id: deepLinkChatId, metadata: meta, name: meta.sourceName || "Chat" });
+              // Clean URL
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+          } catch (e) { console.error("Deep link error", e); }
+          setIsLoading(false);
+        }
       }
       setIsAuthChecking(false);
     });
@@ -653,6 +673,32 @@ export default function App() {
       alert("Profile Updated!");
       window.location.reload();
     } catch (err) { alert("Update failed: " + err.message); }
+  };
+
+  const handleEnableNotifications = async () => {
+    if (!user) return;
+    const permission = await requestNotificationPermission(user.uid);
+    if (permission) {
+      setNotifPermission('granted');
+      alert("Notifications Enabled! You will now receive alerts.");
+    } else {
+      setNotifPermission('denied');
+      alert("Permission denied. Please enable them in your browser settings.");
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (Notification.permission === 'granted') {
+      try {
+        await sendNotificationToUser(user.email, "Test Notification", "This is a test notification! 🔔");
+        alert("Test notification sent! Check your system tray.");
+      } catch (e) {
+        console.error(e);
+        alert("Failed to send test. Check console.");
+      }
+    } else {
+      alert("Please enable notifications first.");
+    }
   };
 
   const openEditProfile = () => {
@@ -1814,6 +1860,35 @@ export default function App() {
             {/* CONTENT TABS */}
             {!isEditingProfile && (
               <div className="mt-8 text-left">
+                {/* NOTIFICATION SETTINGS */}
+                {user?.email === viewProfileUser?.email && (
+                  <div className="mb-8">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2"><Sliders size={14} /> Settings</h3>
+                    <div className="bg-[#1a1c22] p-4 rounded-xl border border-white/5 flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                          <Bell size={16} className={notifPermission === 'granted' ? "text-green-500" : "text-gray-400"} />
+                          Push Notifications
+                        </h4>
+                        <p className="text-[10px] text-gray-400 mt-1 max-w-[200px] sm:max-w-none">
+                          {notifPermission === 'granted' ? "Active. You will receive alerts for new messages." : "Enable to get instant message alerts."}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {notifPermission === 'granted' ? (
+                          <button onClick={handleTestNotification} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-lg border border-white/10 transition-all">
+                            Test Alert
+                          </button>
+                        ) : (
+                          <button onClick={handleEnableNotifications} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-lg transition-all animate-pulse">
+                            Enable
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <h3 className="text-lg font-bold text-white mb-4 border-b border-white/10 pb-2 flex gap-4">
                   <span className="border-b-2 border-blue-500 pb-2">Listings & Requests</span>
                 </h3>
