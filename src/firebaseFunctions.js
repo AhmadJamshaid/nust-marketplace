@@ -230,7 +230,7 @@ export const listenToUserChats = (userEmail, callback) => {
 // --- NOTIFICATION TRIGGER (CLIENT-SIDE WORKAROUND) ---
 // WARNING: In a real app, send notifications from a trusted backend environment (Cloud Functions).
 // Storing the Server Key in client-side code is not recommended for production security.
-const FCM_SERVER_KEY = "AIzaSyAm9TnIqrc4mjo-9EubLItRm4E1KThI0TI";
+// const FCM_SERVER_KEY = "AIzaSyAm9TnIqrc4mjo-9EubLItRm4E1KThI0TI"; // Moved to Serverless Function
 
 // Update signature to accept dataOptions
 export const sendNotificationToUser = async (targetEmail, title, body, dataOptions = {}) => {
@@ -251,27 +251,25 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
     const sendPromises = tokensSnap.docs.map(async (tokenDoc) => {
       const { token } = tokenDoc.data();
 
-      const message = {
-        to: token,
-        notification: {
-          title: title,
-          body: body,
-          icon: '/logo192.png',
-        },
+      const payload = {
+        token,
+        title,
+        body,
         data: {
           chatId: dataOptions.chatId || "",
           url: window.location.origin + (dataOptions.chatId ? '/?chatId=' + dataOptions.chatId : '')
         }
       };
 
-      await fetch('https://fcm.googleapis.com/fcm/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'key=' + FCM_SERVER_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(message)
-      });
+      try {
+        await fetch('/api/send-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (err) {
+        console.warn("API Notification Error (might be local dev):", err);
+      }
     });
 
     await Promise.all(sendPromises);
