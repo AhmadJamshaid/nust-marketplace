@@ -13,7 +13,7 @@ import {
   deleteListing, markListingSold, reportListing, updateUserProfile, deleteChat,
   listenToListings, listenToRequests, markChatRead, updateRequest, resetPassword,
   confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
-  listenToUserChats, validatePassword, requestNotificationPermission, sendNotificationToUser, getChatMetadata
+  listenToUserChats, validatePassword, requestNotificationPermission, sendNotificationToUser, getChatMetadata, onMessageListener
 } from './firebaseFunctions';
 import InstallPopup from './components/InstallPopup';
 import { useInstallPrompt } from './context/InstallContext';
@@ -249,7 +249,26 @@ export default function App() {
       setIsAuthChecking(false);
     });
 
-    return () => unsubscribe();
+    // --- FOREGROUND NOTIFICATION LISTENER ---
+    // This ensures notifications appear even when the app is OPEN
+    let unsubscribeMsg = null;
+    try {
+      unsubscribeMsg = onMessageListener((payload) => {
+        console.log("Foreground Message Received:", payload);
+        const { title, body } = payload.notification;
+        if (Notification.permission === 'granted') {
+          new Notification(title, {
+            body: body,
+            icon: '/logo192.png'
+          });
+        }
+      });
+    } catch (e) { console.warn("Failed to init msg listener", e); }
+
+    return () => {
+      unsubscribe();
+      if (typeof unsubscribeMsg === 'function') unsubscribeMsg();
+    };
   }, []);
 
   // --- PASSWORD RESET DEEP LINK HANDLER ---
