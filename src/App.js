@@ -201,6 +201,13 @@ export default function App() {
   const [installTrigger, setInstallTrigger] = useState(0); // Trigger for Install Popup
   const { showInstallPrompt, isInstallAvailable } = useInstallPrompt();
 
+  // Keep Notification Permission in Sync
+  useEffect(() => {
+    const syncPermission = () => setNotifPermission(Notification.permission);
+    window.addEventListener('focus', syncPermission);
+    return () => window.removeEventListener('focus', syncPermission);
+  }, []);
+
   const inputClass = "w-full bg-[#202225] text-white border-2 border-transparent focus:border-[#003366] rounded-xl px-4 py-3 placeholder-gray-500 outline-none transition-all duration-200 shadow-inner text-base";
 
   // --- INITIALIZATION WITH REAL-TIME LISTENERS ---
