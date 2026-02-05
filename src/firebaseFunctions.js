@@ -267,6 +267,11 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
           body: JSON.stringify(payload)
         });
         if (!response.ok) {
+          if (response.status === 410) {
+            console.warn("Token expired/invalid (410). Deleting from Firestore:", tokenDoc.id);
+            await deleteDoc(tokenDoc.ref);
+            return; // Done
+          }
           let errMsg = "Server status: " + response.status;
           try {
             const text = await response.text();
@@ -276,10 +281,6 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
         }
       } catch (err) {
         console.warn("API Notification Error (Likely need to DEPLOY to Vercel):", err);
-        // We suppress the error to not crash the whole batch, but we log it.
-        // For the test button specifically, we might want to propagate it?
-        // But this function is used by batch (map).
-        // Let's just log it loudly.
       }
     });
 
