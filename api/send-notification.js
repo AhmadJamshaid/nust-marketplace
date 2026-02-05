@@ -25,7 +25,7 @@ export default async function handler(req, res) {
             const projectId = process.env.FIREBASE_PROJECT_ID ? process.env.FIREBASE_PROJECT_ID.trim() : null;
             const clientEmail = process.env.FIREBASE_CLIENT_EMAIL ? process.env.FIREBASE_CLIENT_EMAIL.trim() : null;
             // Handle Private Key Newlines
-            let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+            let privateKey = process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.trim() : null;
             if (privateKey) {
                 // If user pasted literal "\n", replace them. 
                 // If user pasted real newlines, this regex call is safe (it only matches literal backslash-n).
