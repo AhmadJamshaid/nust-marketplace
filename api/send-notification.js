@@ -92,7 +92,15 @@ export default async function handler(req, res) {
         const response = await admin.messaging().send(message);
         return res.status(200).json({ success: true, messageId: response });
     } catch (error) {
+        if (error.code === 'messaging/registration-token-not-registered') {
+            // Token is dead. Return 410 (Gone) so client knows to stop using it.
+            return res.status(410).json({ error: 'TokenExpired', details: 'The FCM token is invalid or expired.' });
+        }
+        if (error.code === 'messaging/invalid-argument') {
+            return res.status(400).json({ error: 'InvalidToken', details: 'The FCM token format is incorrect.' });
+        }
+
         console.error("FCM Send Error:", error);
-        return res.status(500).json({ error: 'Failed to send', details: error.message });
+        return res.status(500).json({ error: 'Failed to send', details: error.code || error.message });
     }
 }
