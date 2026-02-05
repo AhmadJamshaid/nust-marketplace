@@ -24,12 +24,17 @@ export default async function handler(req, res) {
             // READ ENV VARS & CLEAN THEM
             const projectId = process.env.FIREBASE_PROJECT_ID ? process.env.FIREBASE_PROJECT_ID.trim() : null;
             const clientEmail = process.env.FIREBASE_CLIENT_EMAIL ? process.env.FIREBASE_CLIENT_EMAIL.trim() : null;
-            // Handle Private Key Newlines
-            let privateKey = process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.trim() : null;
+            // Handle Private Key Newlines & Cleanup
+            let privateKey = process.env.FIREBASE_PRIVATE_KEY;
             if (privateKey) {
-                // If user pasted literal "\n", replace them. 
-                // If user pasted real newlines, this regex call is safe (it only matches literal backslash-n).
+                // 1. Remove surrounding quotes (common copy-paste error from JSON)
+                if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+                    privateKey = privateKey.slice(1, -1);
+                }
+                // 2. Handle literal \n (from JSON copy)
                 privateKey = privateKey.replace(/\\n/g, '\n');
+                // 3. Trim whitespace
+                privateKey = privateKey.trim();
             }
 
             if (!projectId || !clientEmail || !privateKey) {
