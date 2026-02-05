@@ -21,25 +21,33 @@ export default async function handler(req, res) {
     try {
         admin = require('firebase-admin');
         if (!admin.apps.length) {
-            // READ ENV VARS & CLEAN THEM
+            // OPTION 1: Load from Single JSON Variable (Robust/Preferred)
+            if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+                try {
+                    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+                    admin.initializeApp({
+                        credential: admin.credential.cert(serviceAccount)
+                    });
+                    return; // Initialized successfully
+                } catch (jsonError) {
+                    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:", jsonError);
+                    // Fallthrough to Option 2
+                }
+            }
+
+            // OPTION 2: Load from Individual Vars (Backup)
             const projectId = process.env.FIREBASE_PROJECT_ID ? process.env.FIREBASE_PROJECT_ID.trim() : null;
             const clientEmail = process.env.FIREBASE_CLIENT_EMAIL ? process.env.FIREBASE_CLIENT_EMAIL.trim() : null;
-            // Handle Private Key Newlines & Cleanup
             let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
             if (privateKey) {
-                // 1. Remove surrounding quotes (common copy-paste error from JSON)
-                if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-                    privateKey = privateKey.slice(1, -1);
-                }
-                // 2. Handle literal \n (from JSON copy)
-                privateKey = privateKey.replace(/\\n/g, '\n');
-                // 3. Trim whitespace
-                privateKey = privateKey.trim();
+                // Formatting fixes
+                if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
+                privateKey = privateKey.replace(/\\n/g, '\n').trim();
             }
 
             if (!projectId || !clientEmail || !privateKey) {
-                console.error("Missing Firebase Admin credentials in Env Vars");
-                throw new Error("Missing Server Configuration (Env Vars)");
+                throw new Error("Missing Server Configuration: Set 'FIREBASE_SERVICE_ACCOUNT' (JSON) OR 'FIREBASE_PRIVATE_KEY' etc.");
             }
 
             admin.initializeApp({
