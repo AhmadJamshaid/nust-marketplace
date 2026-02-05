@@ -266,7 +266,14 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!response.ok) throw new Error(`Server status: ${response.status}`);
+        if (!response.ok) {
+          let errMsg = "Server status: " + response.status;
+          try {
+            const text = await response.text();
+            errMsg += " - " + text;
+          } catch (e) { }
+          throw new Error(errMsg);
+        }
       } catch (err) {
         console.warn("API Notification Error (Likely need to DEPLOY to Vercel):", err);
         // We suppress the error to not crash the whole batch, but we log it.
