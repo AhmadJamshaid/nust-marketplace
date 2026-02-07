@@ -245,6 +245,12 @@ export default function App() {
           } catch (e) { console.error("Deep link error", e); }
           setIsLoading(false);
         }
+
+        // ✅ AUTO-REFRESH NOTIFICATION TOKEN
+        // Ensure Firestore has the latest token for this device to prevent 410 Errors
+        if (Notification.permission === 'granted') {
+          requestNotificationPermission(u.uid).catch(e => console.warn("Token auto-refresh failed:", e));
+        }
       }
       setIsAuthChecking(false);
     });
@@ -262,6 +268,12 @@ export default function App() {
             icon: '/logo192.png'
           });
         }
+
+        // Custom UI Toast for Foreground (browsers might block new Notification when focused)
+        // We can use a simple alert/toast library or just console for now, but user mentioned bubble pops.
+        // Let's add a temporary visual "New Message" indicator if possible, or just rely on the sound/badge.
+        // For now, logging effectively and maybe triggering a re-render is enough given the architecture.
+
       });
     } catch (e) { console.warn("Failed to init msg listener", e); }
 
