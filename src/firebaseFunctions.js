@@ -261,7 +261,11 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
       };
 
       try {
-        const response = await fetch('/api/send-notification', {
+        const apiUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? 'https://nust-marketplace.vercel.app/api/send-notification'
+          : '/api/send-notification';
+
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
