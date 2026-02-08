@@ -1174,26 +1174,24 @@ export default function App() {
                   }}
                 />
 
-                {/* MODE TOGGLE INSIDE SEARCH BAR */}
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 bg-[#1a1c22] p-1 rounded-lg border border-white/10">
-                  <button onClick={() => setMarketSearchMode('product')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'product' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Products"><ShoppingBag size={14} /></button>
-                  <button onClick={() => setMarketSearchMode('user')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'user' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Users"><User size={14} /></button>
-                </div>
-                {/* Search Suggestions Dropdown */}
-                {searchSuggestions.length > 0 && searchQuery && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1c22] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
-                    {searchSuggestions.map((s, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => { setSearchQuery(s); setSearchSuggestions([]); }}
-                        className="px-4 py-3 hover:bg-white/5 cursor-pointer text-sm text-gray-300 hover:text-white flex items-center gap-2"
-                      >
-                        <Search size={14} className="opacity-50" /> {s}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <button onClick={() => setMarketSearchMode('user')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'user' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Users"><User size={14} /></button>
               </div>
+
+              {/* Search Suggestions Dropdown */}
+              {searchSuggestions.length > 0 && searchQuery && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1c22] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                  {searchSuggestions.map((s, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => { setSearchQuery(s); setSearchSuggestions([]); }}
+                      className="px-4 py-3 hover:bg-white/5 cursor-pointer text-sm text-gray-300 hover:text-white flex items-center gap-2"
+                    >
+                      <Search size={14} className="opacity-50" /> {s}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Install Button */}
               {isInstallAvailable && (
                 <button onClick={showInstallPrompt} className="px-4 rounded-xl border border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white flex items-center justify-center gap-2 transition-all" title="Install App">
@@ -1856,6 +1854,19 @@ export default function App() {
                       null
                     ))}
                   </div>
+                  {/* Notification Debugging Tools */}
+                  {viewProfileUser?.email === user?.email && (
+                    <div className="bg-[#202225] p-4 rounded-xl border border-gray-700 mb-6 mx-auto max-w-sm">
+                      <h3 className="text-white font-bold mb-2 flex items-center justify-center gap-2">
+                        <Bell size={18} /> Notification Status
+                      </h3>
+                      <div className="flex gap-2">
+                        <button onClick={handleEnableNotifications} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-2 rounded-lg font-bold text-xs">Enable / Refresh</button>
+                        <button onClick={handleTestNotification} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-2 rounded-lg font-bold text-xs">Send Test</button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Verification / Contact Actions */}
                   {viewProfileUser?.email !== user?.email && (
                     <div className="flex justify-center gap-3 mt-4">
@@ -1994,6 +2005,8 @@ export default function App() {
           </div>
         )}
       </div>
+
+
 
       {
         activeProduct && (

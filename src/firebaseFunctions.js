@@ -244,7 +244,10 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
     // Get tokens (might support multi-device)
     const tokensSnap = await getDocs(collection(db, 'users', userUid, 'fcmTokens'));
 
-    if (tokensSnap.empty) return;
+    if (tokensSnap.empty) {
+      console.warn(`No notification tokens found for user ${targetEmail}. They may need to open the app to reconnect.`);
+      return;
+    }
 
     // Send to all checks
     const sendPromises = tokensSnap.docs.map(async (tokenDoc) => {
