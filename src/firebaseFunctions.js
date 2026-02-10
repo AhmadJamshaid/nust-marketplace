@@ -265,25 +265,25 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
         }
       };
 
-      try {
-        const apiUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? 'https://nust-marketplace.vercel.app/api/send-notification'
-          : '/api/send-notification';
 
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-          if (response.status === 410) {
-            console.warn("Token expired/invalid (410). Deleting from Firestore:", tokenDoc.id);
-            await deleteDoc(tokenDoc.ref);
-          }
-          const errorText = await response.text();
-          throw new Error(`API Error ${response.status}: ${errorText}`);
+      const apiUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'https://nust-marketplace.vercel.app/api/send-notification'
+        : '/api/send-notification';
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        if (response.status === 410) {
+          console.warn("Token expired/invalid (410). Deleting from Firestore:", tokenDoc.id);
+          await deleteDoc(tokenDoc.ref);
         }
+        const errorText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errorText}`);
       }
+
     });
 
     await Promise.all(sendPromises);
