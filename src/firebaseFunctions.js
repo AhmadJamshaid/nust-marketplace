@@ -341,10 +341,13 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
 
     try {
       // Fire and forget, but log errors
+      // DEBUG ALERT (User please check this!)
+      alert(`DEBUG: Sending Notification to ${recipientEmail}`);
       await sendNotificationToUser(recipientEmail, senderName, text, { chatId });
       console.log(`[sendMessage] Notification sent to ${recipientEmail}`);
     } catch (err) {
       console.error("[sendMessage] Notification FAILED:", err);
+      // alert("DEBUG: Notification Failed: " + err.message);
     }
   } else {
     console.warn("[sendMessage] Could not determine recipient for notification.", { chatMetadata, chatData });
