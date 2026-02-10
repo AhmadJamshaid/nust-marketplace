@@ -321,25 +321,33 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
   });
 
   // --- TRIGGER NOTIFICATION ---
-  // Determine recipient
+  // Determine Recipient
   let recipientEmail = null;
-  if (chatMetadata && chatMetadata.participants) {
-    recipientEmail = chatMetadata.participants.find(p => p.email !== sender)?.email;
-  } else if (chatData && chatData.participants) {
-    recipientEmail = chatData.participants.find(p => p.email !== sender)?.email;
+  const participants = chatMetadata?.participants || chatData?.participants;
+
+  if (participants) {
+    recipientEmail = participants.find(p => p.email !== sender)?.email;
   }
 
+  console.log(`[sendMessage] Sender: ${sender}, Recipient: ${recipientEmail}`);
+
   if (recipientEmail) {
-    // We don't have sender name readily available if not passed, try to use "New Message"
-    // Pass chatId as an object property or extra arg if we redesign, but here we can hack it into body object if we change signature?
-    // Wait, sendNotificationToUser takes (email, title, body).
-    // Let's change the function signature above in previous step or just pass it in data.
-    // Actually, I can't easily change signature without breaking other calls (test button).
-    // Let's overload the 3rd argument or properly update the signature.
-    // I will update the signature in a separate step or just use a robust Way.
-    // Let's update sendNotificationToUser to accept an options object or just 4th arg.
-    // I prefer adding a 4th argument `data`
-    sendNotificationToUser(recipientEmail, "New Message", text, { chatId });
+    // Generate a better title using the Sender's Username if available
+    let senderName = "New Message";
+    if (participants) {
+      const startUser = participants.find(p => p.email === sender);
+      if (startUser && startUser.username) senderName = startUser.username;
+    }
+
+    try {
+      // Fire and forget, but log errors
+      await sendNotificationToUser(recipientEmail, senderName, text, { chatId });
+      console.log(`[sendMessage] Notification sent to ${recipientEmail}`);
+    } catch (err) {
+      console.error("[sendMessage] Notification FAILED:", err);
+    }
+  } else {
+    console.warn("[sendMessage] Could not determine recipient for notification.", { chatMetadata, chatData });
   }
 
 

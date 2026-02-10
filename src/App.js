@@ -268,9 +268,12 @@ export default function App() {
         addLog("🔔 Foreground Msg: " + JSON.stringify(payload?.notification || payload));
         const { title, body } = payload.notification;
         if (Notification.permission === 'granted') {
-          new Notification(title, {
-            body: body,
-            icon: '/logo192.png'
+          navigator.serviceWorker.ready.then((registration) => {
+            registration.showNotification(title, {
+              body,
+              icon: '/logo192.png',
+              vibrate: [200, 100, 200]
+            });
           });
         }
       });
