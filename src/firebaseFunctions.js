@@ -279,17 +279,10 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
           if (response.status === 410) {
             console.warn("Token expired/invalid (410). Deleting from Firestore:", tokenDoc.id);
             await deleteDoc(tokenDoc.ref);
-            return; // Done
           }
-          let errMsg = "Server status: " + response.status;
-          try {
-            const text = await response.text();
-            errMsg += " - " + text;
-          } catch (e) { }
-          throw new Error(errMsg);
+          const errorText = await response.text();
+          throw new Error(`API Error ${response.status}: ${errorText}`);
         }
-      } catch (err) {
-        console.warn("API Notification Error (Likely need to DEPLOY to Vercel):", err);
       }
     });
 
