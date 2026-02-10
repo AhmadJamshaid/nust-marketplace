@@ -715,13 +715,15 @@ export default function App() {
 
   const handleEnableNotifications = async () => {
     if (!user) return;
-    const permission = await requestNotificationPermission(user.uid);
-    if (permission) {
-      setNotifPermission('granted');
-      alert("Notifications Enabled! You will now receive alerts.");
-    } else {
+    try {
+      const permission = await requestNotificationPermission(user.uid);
+      if (permission) {
+        setNotifPermission('granted');
+        alert("✅ Notifications Enabled! Device Registered.");
+      }
+    } catch (error) {
       setNotifPermission('denied');
-      alert("Permission denied. Please enable them in your browser settings.");
+      alert("❌ Notification Error:\n" + error.message + "\n\nTry checking browser permissions or clearing site data.");
     }
   };
 
@@ -732,10 +734,10 @@ export default function App() {
         alert("Test notification sent! Check your system tray.");
       } catch (e) {
         console.error(e);
-        alert("Failed to send test. Check console.");
+        alert("❌ Test Failed:\n" + e.message);
       }
     } else {
-      alert("Please enable notifications first.");
+      alert("Please click 'Enable / Refresh Connection' first.");
     }
   };
 
@@ -1174,6 +1176,7 @@ export default function App() {
                   }}
                 />
 
+                <button onClick={() => setMarketSearchMode('product')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'product' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Products"><ShoppingBag size={14} /></button>
                 <button onClick={() => setMarketSearchMode('user')} className={`p-1.5 rounded-md transition-all ${marketSearchMode === 'user' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`} title="Search Users"><User size={14} /></button>
               </div>
 

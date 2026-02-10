@@ -28,9 +28,11 @@ export const requestNotificationPermission = async (userUid) => {
       }
     } else {
       console.log("Notification permission denied.");
+      throw new Error("Permission Denied (Browser Setting)");
     }
   } catch (error) {
     console.error("Error requesting notification permission:", error);
+    throw error; // Propagate error for UI alert
   }
   return null;
 };
