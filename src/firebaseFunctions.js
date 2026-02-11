@@ -104,7 +104,22 @@ export const updateUserProfile = async (uid, data, newPassword) => {
   }
 };
 
-export const logoutUser = () => signOut(auth);
+export const logoutUser = async () => {
+  const authUser = auth.currentUser;
+  if (authUser) {
+    try {
+      // 1. Delete the FCM token for this device from Firestore to stop notifications
+      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+      if (token) {
+        await deleteDoc(doc(db, 'users', authUser.uid, 'fcmTokens', token));
+        console.log("Token deleted from Firestore on logout.");
+      }
+    } catch (e) {
+      console.warn("Failed to delete token on logout (non-fatal):", e);
+    }
+  }
+  return signOut(auth);
+};
 export const resendVerificationLink = () => auth.currentUser && sendEmailVerification(auth.currentUser);
 export const reloadUser = async () => {
   if (auth.currentUser) {

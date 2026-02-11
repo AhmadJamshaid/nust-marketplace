@@ -1105,7 +1105,9 @@ export default function App() {
             <img src="/logo.png" className="w-14 h-14 object-contain" alt="Logo" />
             <span className="font-bold text-3xl tracking-wide bg-gradient-to-r from-sky-300 via-cyan-400 to-blue-600 bg-clip-text text-transparent drop-shadow-sm" style={{ fontFamily: 'Rajdhani, sans-serif' }}>MHENZO</span>
           </div>
-          <button onClick={logoutUser} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">
+          <button onClick={async () => {
+            try { await logoutUser(); } catch (e) { console.error(e); }
+          }} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-red-400" title="Logout">
             <LogOut size={20} />
           </button>
         </div>
