@@ -289,19 +289,33 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
         ? 'https://nust-marketplace.vercel.app/api/send-notification'
         : '/api/send-notification';
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        if (response.status === 410) {
-          console.warn("Token expired/invalid (410). Deleting from Firestore:", tokenDoc.id);
-          await deleteDoc(tokenDoc.ref);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          if (response.status === 410) {
+            console.warn("Token expired/invalid (410). Deleting from Firestore:", tokenDoc.id);
+            await deleteDoc(tokenDoc.ref);
+          }
+          const errorText = await response.text();
+          console.error(`API Error ${response.status}: ${errorText}`);
+          throw new Error(`API Error ${response.status}: ${errorText}`);
         }
-        const errorText = await response.text();
-        console.error(`API Error ${response.status}: ${errorText}`);
-        throw new Error(`API Error ${response.status}: ${errorText}`);
+      } catch (fetchErr) {
+        if (fetchErr.name === 'AbortError') {
+          console.error(`Status check: API Timed Out after 8s for ${token.slice(0, 10)}...`);
+          throw new Error("API Timed Out");
+        }
+        throw fetchErr;
       }
 
     });
