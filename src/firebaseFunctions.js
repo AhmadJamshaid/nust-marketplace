@@ -262,9 +262,13 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
     const tokensSnap = await getDocs(collection(db, 'users', userUid, 'fcmTokens'));
 
     if (tokensSnap.empty) {
-      console.warn(`No notification tokens found for user ${targetEmail}. They may need to open the app to reconnect.`);
+      console.warn(`No notification tokens found for user ${targetEmail}.`);
       return;
     }
+
+    // Checking token count (Debug)
+    // Checking token count (Debug)
+    console.log(`Found ${tokensSnap.size} tokens for ${targetEmail}. Sending...`);
 
     // Send to all checks
     const sendPromises = tokensSnap.docs.map(async (tokenDoc) => {
@@ -296,6 +300,7 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
           await deleteDoc(tokenDoc.ref);
         }
         const errorText = await response.text();
+        console.error(`API Error ${response.status}: ${errorText}`);
         throw new Error(`API Error ${response.status}: ${errorText}`);
       }
 
@@ -355,14 +360,13 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
     }
 
     try {
-      // Fire and forget, but log errors
-      // DEBUG ALERT (User please check this!)
-      alert(`DEBUG: Sending Notification to ${recipientEmail}`);
-      await sendNotificationToUser(recipientEmail, senderName, text, { chatId });
-      console.log(`[sendMessage] Notification sent to ${recipientEmail}`);
+      // Fire and forget - Don't await to prevent UI freeze
+      sendNotificationToUser(recipientEmail, senderName, text, { chatId })
+        .then(() => console.log(`[sendMessage] Notification sent to ${recipientEmail}`))
+        .catch(err => console.error("[sendMessage] Notification Failed:", err));
+
     } catch (err) {
-      console.error("[sendMessage] Notification FAILED:", err);
-      // alert("DEBUG: Notification Failed: " + err.message);
+      console.error("[sendMessage] Notification block error:", err);
     }
   } else {
     console.warn("[sendMessage] Could not determine recipient for notification.", { chatMetadata, chatData });
