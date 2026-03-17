@@ -243,7 +243,6 @@ export default function App() {
     let unsubscribeMsg = null;
     try {
       unsubscribeMsg = onMessageListener((payload) => {
-        addLog("🔔 Foreground Msg: " + JSON.stringify(payload?.notification || payload));
         const { title, body } = payload.notification;
         if (Notification.permission === 'granted') {
           navigator.serviceWorker.ready.then((registration) => {
@@ -257,7 +256,6 @@ export default function App() {
       });
     } catch (e) {
       console.warn("Failed to init msg listener", e);
-      addLog("⚠️ Init Msg Listener Error: " + e.message);
     }
 
     return () => {
