@@ -184,10 +184,6 @@ export default function App() {
   const [installTrigger, setInstallTrigger] = useState(0); // Trigger for Install Popup
   const { showInstallPrompt, isInstallAvailable } = useInstallPrompt();
 
-  // DEBUG LOGGING STATE
-  const [debugLogs, setDebugLogs] = useState([]);
-  const addLog = (msg) => setDebugLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
-
   // Keep Notification Permission in Sync
   useEffect(() => {
     const syncPermission = () => setNotifPermission(Notification.permission);
@@ -702,37 +698,28 @@ export default function App() {
 
   const handleEnableNotifications = async () => {
     if (!user) return;
-    addLog("Requesting Permission...");
     try {
       const permission = await requestNotificationPermission(user.uid);
       if (permission) {
         setNotifPermission('granted');
-        addLog("✅ Permission Granted. Token: " + permission.slice(0, 10) + "...");
         alert("✅ Notifications Enabled! Device Registered.");
-      } else {
-        addLog("❌ Permission Denied (API returned null)");
       }
     } catch (error) {
       setNotifPermission('denied');
-      addLog("❌ Error: " + error.message);
       alert("❌ Notification Error:\n" + error.message + "\n\nTry checking browser permissions or clearing site data.");
     }
   };
 
   const handleTestNotification = async () => {
     if (Notification.permission === 'granted') {
-      addLog("Sending Test Alert...");
       try {
         await sendNotificationToUser(user.email, "Test Notification", "This is a test notification! 🔔");
-        addLog("✅ Test Sent (API 200 OK)");
         alert("Test notification sent! Check your system tray.");
       } catch (e) {
         console.error(e);
-        addLog("❌ Test Failed: " + e.message);
         alert("❌ Test Failed:\n" + e.message);
       }
     } else {
-      addLog("⚠️ Test Blocked: Permission not granted");
       alert("Please click 'Enable / Refresh Connection' first.");
     }
   };
@@ -1858,19 +1845,6 @@ export default function App() {
                       null
                     ))}
                   </div>
-                  {/* Notification Debugging Tools */}
-                  {viewProfileUser?.email === user?.email && (
-                    <div className="bg-[#202225] p-4 rounded-xl border border-gray-700 mb-6 mx-auto max-w-sm">
-                      <h3 className="text-white font-bold mb-2 flex items-center justify-center gap-2">
-                        <Bell size={18} /> Notification Status
-                      </h3>
-                      <div className="flex gap-2">
-                        <button onClick={handleEnableNotifications} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-2 rounded-lg font-bold text-xs">Enable / Refresh</button>
-                        <button onClick={handleTestNotification} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-2 rounded-lg font-bold text-xs">Send Test</button>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Verification / Contact Actions */}
                   {viewProfileUser?.email !== user?.email && (
                     <div className="flex justify-center gap-3 mt-4">
@@ -1941,20 +1915,6 @@ export default function App() {
                     </div>
                   </div>
                 )}
-
-                {/* DEBUG CONSOLE (For Mobile Troubleshooting) */}
-                <div className="bg-black/40 p-4 rounded-xl border border-white/10 space-y-2 mb-6">
-                  <div className="flex justify-between items-center">
-                    <h3 className="font-bold text-gray-300 text-sm flex items-center gap-2"><AlertCircle size={14} /> Debug Console</h3>
-                    <button onClick={() => setDebugLogs([])} className="text-xs text-blue-400 hover:text-white">Clear</button>
-                  </div>
-                  <div className="h-32 overflow-y-auto bg-black/50 p-2 rounded text-[10px] font-mono text-green-400 border border-white/5 space-y-1">
-                    {debugLogs.length === 0 && <span className="text-gray-600 italic">No logs yet...</span>}
-                    {debugLogs.map((log, i) => (
-                      <div key={i} className="break-all border-b border-white/5 pb-1">{log}</div>
-                    ))}
-                  </div>
-                </div>
 
                 <h3 className="text-lg font-bold text-white mb-4 border-b border-white/10 pb-2 flex gap-4">
                   <span className="border-b-2 border-blue-500 pb-2">Listings & Requests</span>
@@ -2180,19 +2140,23 @@ export default function App() {
                       {(() => {
                         let name = "User";
                         let topic = "Chat";
+                        let isDirectChat = false;
 
                         if (activeChat.metadata) {
                           // ✅ Use metadata (ALWAYS CORRECT)
                           const otherParticipant = activeChat.metadata.participants?.find(p => p.email !== user.email);
                           name = otherParticipant?.username || "User";
                           topic = activeChat.metadata.sourceName || activeChat.name || "Chat";
+                          if (activeChat.metadata.type === 'direct') isDirectChat = true;
                         } else {
                           // TEMPORARY FALLBACK for old chats (before migration)
                           name = activeChat.sellerName || activeChat.userName || "User";
                           topic = activeChat.name || activeChat.title || "Chat";
                         }
+                        
+                        if (topic && topic.startsWith("Chat with")) isDirectChat = true;
 
-                        return `${name} (${topic})`;
+                        return isDirectChat ? name : `${name} (${topic})`;
                       })()}
                     </h3>
                   </div>
