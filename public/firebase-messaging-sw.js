@@ -21,7 +21,6 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message ', payload);
     // Customize notification here (optional, FCM usually handles this automatically if 'notification' key is present)
     const notificationTitle = payload.notification.title;
     const notificationOptions = {
@@ -30,11 +29,12 @@ messaging.onBackgroundMessage((payload) => {
         data: payload.data // Pass URL/chatId data to notification
     };
 
-    self.registration.showNotification(notificationTitle, notificationOptions);
+    // FCM automatically displays a notification if payload.notification is present.
+    // Manually calling showNotification here causes duplicate notifications.
+    // self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 self.addEventListener('notificationclick', function (event) {
-    console.log('[firebase-messaging-sw.js] Notification click Received.', event);
     event.notification.close();
 
     // Deep Link Logic

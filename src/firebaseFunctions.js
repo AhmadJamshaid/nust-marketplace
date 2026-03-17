@@ -66,10 +66,8 @@ export const loginWithUsername = async (username, password) => {
 
 // --- HELPER --
 export const validatePassword = (password) => {
-  const regex = /(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&]).{8,}/;
-  if (!regex.test(password)) {
-    throw new Error("Password must be 8+ chars, include Upper, Lower, Num, and Special char.");
-  }
+  // Password restrictions removed. 
+  // Firebase Auth natively requires at least 6 characters, which will be handled by Firebase.
 };
 
 export const signUpUser = async (email, password, userData) => {
@@ -266,10 +264,6 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
       return;
     }
 
-    // Checking token count (Debug)
-    // Checking token count (Debug)
-    console.log(`Found ${tokensSnap.size} tokens for ${targetEmail}. Sending...`);
-
     // Send to all checks
     const sendPromises = tokensSnap.docs.map(async (tokenDoc) => {
       const { token } = tokenDoc.data();
@@ -363,8 +357,6 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
     recipientEmail = participants.find(p => p.email !== sender)?.email;
   }
 
-  console.log(`[sendMessage] Sender: ${sender}, Recipient: ${recipientEmail}`);
-
   if (recipientEmail) {
     // Generate a better title using the Sender's Username if available
     let senderName = "New Message";
@@ -376,7 +368,6 @@ export const sendMessage = async (chatId, sender, text, chatMetadata = null) => 
     try {
       // Fire and forget - Don't await to prevent UI freeze
       sendNotificationToUser(recipientEmail, senderName, text, { chatId })
-        .then(() => console.log(`[sendMessage] Notification sent to ${recipientEmail}`))
         .catch(err => console.error("[sendMessage] Notification Failed:", err));
 
     } catch (err) {

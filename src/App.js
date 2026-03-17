@@ -23,15 +23,7 @@ const CATEGORIES = ['Electronics', 'Software Related', 'Stationary', 'Sports', '
 // --- REUSABLE PASSWORD COMPONENT ---
 const PasswordInput = ({ value, onChange, placeholder = "Password", onValidation, ...props }) => {
   const [show, setShow] = useState(false);
-  const requirements = [
-    { regex: /.{8,}/, label: "8+ Chars" },
-    { regex: /[A-Z]/, label: "Upper" },
-    { regex: /[a-z]/, label: "Lower" },
-    { regex: /[0-9]/, label: "Num" },
-    { regex: /[@$!%*?&]/, label: "Special" },
-  ];
-  const isValid = requirements.every(r => r.regex.test(value));
-  const missing = requirements.filter(r => !r.regex.test(value)).map(r => r.label).join(", ");
+  const isValid = value && value.length > 0;
 
   useEffect(() => {
     if (onValidation) onValidation(isValid);
@@ -39,15 +31,6 @@ const PasswordInput = ({ value, onChange, placeholder = "Password", onValidation
 
   return (
     <div className="w-full">
-      {value && (
-        <div className="mb-1 h-5 flex justify-end sm:justify-start">
-          {isValid ? (
-            <div className="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 animate-slide-up"><CheckCircle size={10} strokeWidth={3} /> Strong Password</div>
-          ) : (
-            <div className="text-red-400 text-[10px] font-bold animate-pulse">Missing: {missing}</div>
-          )}
-        </div>
-      )}
       <div className="relative">
         <input
           type={show ? "text" : "password"}
@@ -264,7 +247,6 @@ export default function App() {
     let unsubscribeMsg = null;
     try {
       unsubscribeMsg = onMessageListener((payload) => {
-        console.log("Foreground Message Received:", payload);
         addLog("🔔 Foreground Msg: " + JSON.stringify(payload?.notification || payload));
         const { title, body } = payload.notification;
         if (Notification.permission === 'granted') {
