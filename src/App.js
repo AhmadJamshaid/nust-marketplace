@@ -271,14 +271,6 @@ export default function App() {
         if (Notification.permission === 'granted') {
           requestNotificationPermission(u.uid).catch(e => console.warn("Token auto-refresh failed:", e));
         }
-
-        // ✅ SYNC PENDING TOKEN FROM INSTALL POPUP
-        const pendingToken = localStorage.getItem('pendingFCMToken');
-        if (pendingToken) {
-           requestNotificationPermission(u.uid)
-             .then(() => localStorage.removeItem('pendingFCMToken'))
-             .catch(e => console.warn("Pending token sync failed:", e));
-        }
       }
       setIsAuthChecking(false);
     });
@@ -288,14 +280,12 @@ export default function App() {
     let unsubscribeMsg = null;
     try {
       unsubscribeMsg = onMessageListener((payload) => {
-        const title = payload.notification?.title || "New Message";
-        const body = payload.notification?.body || payload.data?.text || "You have a new message.";
+        const { title, body } = payload.notification;
         if (Notification.permission === 'granted') {
           navigator.serviceWorker.ready.then((registration) => {
             registration.showNotification(title, {
               body,
               icon: '/logo192.png',
-              badge: '/logo192.png',
               vibrate: [200, 100, 200]
             });
           });

@@ -37,22 +37,13 @@ const InstallPopup = ({ triggerAction }) => {
     };
 
     const handleNotifyClick = async () => {
-        try {
-            // Wait slightly just in case auth is still initializing
-            const user = auth.currentUser;
-            const token = await requestNotificationPermission(user ? user.uid : null);
-            
-            if (token) {
-                localStorage.setItem('notificationsEnabled', 'true');
-                if (!user) {
-                    // Store token temporarily to sync when they log in
-                    localStorage.setItem('pendingFCMToken', token);
-                }
-            }
-        } catch (error) {
-            console.error(error);
+        if (auth.currentUser) {
+            await requestNotificationPermission(auth.currentUser.uid);
+        } else {
+            await requestNotificationPermission(null);
         }
         setIsVisible(false);
+        localStorage.setItem('notificationsEnabled', 'true');
     };
 
     const handleDismiss = () => {
