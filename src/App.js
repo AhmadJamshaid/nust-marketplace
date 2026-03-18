@@ -184,6 +184,43 @@ export default function App() {
   const [installTrigger, setInstallTrigger] = useState(0); // Trigger for Install Popup
   const { showInstallPrompt, isInstallAvailable } = useInstallPrompt();
 
+  // --- HARDWARE BACK BUTTON INTERCEPTOR ---
+  const currentStateRef = useRef({});
+  useEffect(() => {
+    currentStateRef.current = {
+      showTermsModal, deleteModalItem, rentalModalItem, activeProduct, activeChat, isEditingProfile, view, isLogin
+    };
+  }, [showTermsModal, deleteModalItem, rentalModalItem, activeProduct, activeChat, isEditingProfile, view, isLogin]);
+
+  useEffect(() => {
+    // Initialize history buffer
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = () => {
+      const state = currentStateRef.current;
+      let handled = false;
+
+      if (state.showTermsModal) { setShowTermsModal(false); handled = true; }
+      else if (state.deleteModalItem) { setDeleteModalItem(null); handled = true; }
+      else if (state.rentalModalItem) { setRentalModalItem(null); handled = true; }
+      else if (state.activeProduct) { setActiveProduct(null); handled = true; }
+      else if (state.activeChat) { setActiveChat(null); handled = true; }
+      else if (state.isEditingProfile) { setIsEditingProfile(false); handled = true; }
+      else if (state.view === 'reset_password') { setView('market'); handled = true; }
+      else if (state.view !== 'market') { setView('market'); handled = true; }
+      else if (!state.isLogin) { setIsLogin(true); handled = true; }
+
+      if (handled) {
+        // We intercepted the back button to close a UI layer.
+        // Push state again to restore the buffer for the next back press.
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Keep Notification Permission in Sync
   useEffect(() => {
     const syncPermission = () => setNotifPermission(Notification.permission);
@@ -234,6 +271,14 @@ export default function App() {
         if (Notification.permission === 'granted') {
           requestNotificationPermission(u.uid).catch(e => console.warn("Token auto-refresh failed:", e));
         }
+
+        // ✅ SYNC PENDING TOKEN FROM INSTALL POPUP
+        const pendingToken = localStorage.getItem('pendingFCMToken');
+        if (pendingToken) {
+           requestNotificationPermission(u.uid)
+             .then(() => localStorage.removeItem('pendingFCMToken'))
+             .catch(e => console.warn("Pending token sync failed:", e));
+        }
       }
       setIsAuthChecking(false);
     });
@@ -243,12 +288,14 @@ export default function App() {
     let unsubscribeMsg = null;
     try {
       unsubscribeMsg = onMessageListener((payload) => {
-        const { title, body } = payload.notification;
+        const title = payload.notification?.title || "New Message";
+        const body = payload.notification?.body || payload.data?.text || "You have a new message.";
         if (Notification.permission === 'granted') {
           navigator.serviceWorker.ready.then((registration) => {
             registration.showNotification(title, {
               body,
               icon: '/logo192.png',
+              badge: '/logo192.png',
               vibrate: [200, 100, 200]
             });
           });

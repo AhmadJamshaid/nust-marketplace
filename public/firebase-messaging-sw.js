@@ -21,17 +21,19 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-    // Customize notification here (optional, FCM usually handles this automatically if 'notification' key is present)
-    const notificationTitle = payload.notification.title;
+    // Customize notification to show full message text (WhatsApp style)
+    const notificationTitle = payload.notification?.title || "New Message";
     const notificationOptions = {
-        body: payload.notification.body,
+        body: payload.notification?.body || payload.data?.text || "You have a new message.",
         icon: '/logo192.png',
-        data: payload.data // Pass URL/chatId data to notification
+        badge: '/logo192.png', // Small icon for Android status bar
+        data: payload.data, // Contains chatId/URL payload for click actions
+        vibrate: [200, 100, 200]
     };
 
-    // FCM automatically displays a notification if payload.notification is present.
-    // Manually calling showNotification here causes duplicate notifications.
-    // self.registration.showNotification(notificationTitle, notificationOptions);
+    // FCM automatically displays a notification if 'notification' payload is present on some devices,
+    // but manually firing it guarantees the custom `body` is rendered properly on all platforms (like Chrome for Android).
+    self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 self.addEventListener('notificationclick', function (event) {

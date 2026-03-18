@@ -106,14 +106,25 @@ export const logoutUser = async () => {
   const authUser = auth.currentUser;
   if (authUser) {
     try {
-      // 1. Delete the FCM token for this device from Firestore to stop notifications
+      // 1. Delete the FCM token from Firestore
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
       if (token) {
         await deleteDoc(doc(db, 'users', authUser.uid, 'fcmTokens', token));
-        console.log("Token deleted from Firestore on logout.");
+      }
+
+      // 2. Deregister from Firebase Messaging Service directly
+      const { deleteToken } = require('firebase/messaging');
+      await deleteToken(messaging);
+
+      // 3. Unregister the Service Worker entirely (clears everything, including notifications)
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+          await registration.unregister();
+        }
       }
     } catch (e) {
-      console.warn("Failed to delete token on logout (non-fatal):", e);
+      console.warn("Failed to delete token/SW on logout (non-fatal):", e);
     }
   }
   return signOut(auth);
