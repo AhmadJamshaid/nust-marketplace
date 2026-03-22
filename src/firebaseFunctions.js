@@ -8,30 +8,50 @@ import {
   collection, addDoc, getDocs, getDoc, query, where, onSnapshot,
   orderBy, serverTimestamp, doc, setDoc, updateDoc, increment, deleteDoc, limit, writeBatch, arrayUnion
 } from 'firebase/firestore';
-import { getToken, onMessage } from 'firebase/messaging';
+import { getToken, onMessage, deleteToken } from 'firebase/messaging';
 import { messaging, VAPID_KEY } from './firebase';
 
 export const authStateListener = (callback) => onAuthStateChanged(auth, callback);
 
 // --- NOTIFICATIONS ---
-export const requestNotificationPermission = async (userUid) => {
+export const requestNotificationPermission = async (userUid, forceRegenerate = false) => {
   try {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    console.log(`[PWA Debug] Requesting Notification Permission. Context: ${isStandalone ? 'PWA' : 'Browser'}, ForceRegenerate: ${forceRegenerate}`);
+
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
-      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+      if (!('serviceWorker' in navigator)) {
+        throw new Error("Service Worker not supported in this browser.");
+      }
+      console.log("[PWA Debug] Waiting for Service Worker to be ready...");
+      const registration = await navigator.serviceWorker.ready;
+      
+      if (forceRegenerate) {
+          console.log("[PWA Debug] Forcing token regeneration: Deleting old token...");
+          await deleteToken(messaging).catch(e => console.warn("[PWA Debug] Error deleting existing token:", e));
+      }
+      
+      console.log("[PWA Debug] Service Worker Ready. Generating Firebase Token...");
+
+      const token = await getToken(messaging, { 
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: registration 
+      });
+
       if (token && userUid) {
         // Save token to user profile
         const tokenRef = doc(db, 'users', userUid, 'fcmTokens', token);
-        await setDoc(tokenRef, { token, createdAt: serverTimestamp() });
-        console.log("Notification token saved:", token);
+        await setDoc(tokenRef, { token, createdAt: serverTimestamp(), context: isStandalone ? 'PWA' : 'Browser', refreshedAt: serverTimestamp() });
+        console.log(`[PWA Debug] Notification token deeply bound and saved for context: ${isStandalone ? 'PWA' : 'Browser'}`, token);
         return token;
       }
     } else {
-      console.log("Notification permission denied.");
+      console.log("[PWA Debug] Notification permission denied.");
       throw new Error("Permission Denied (Browser Setting)");
     }
   } catch (error) {
-    console.error("Error requesting notification permission:", error);
+    console.error("[PWA Debug] Error requesting notification permission:", error);
     throw error; // Propagate error for UI alert
   }
   return null;
@@ -77,7 +97,7 @@ export const signUpUser = async (email, password, userData) => {
   if (!isUnique) throw new Error("Username taken. Choose another.");
 
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  await updateProfile(userCredential.user, { displayName: userData.username, photoURL: userData.photoURL });
+  await updateProfile(userCredential.user, { displayName: userData.name, photoURL: userData.photoURL });
   await setDoc(doc(db, 'users', userCredential.user.uid), {
     ...userData, email: userCredential.user.email, uid: userCredential.user.uid,
     reputation: 5.0, totalRatings: 0, createdAt: serverTimestamp()
@@ -89,9 +109,9 @@ export const updateUserProfile = async (uid, data, newPassword) => {
   const userRef = doc(db, 'users', uid);
   await updateDoc(userRef, data);
   if (auth.currentUser) {
-    if (data.username || data.photoURL) {
+    if (data.name || data.photoURL) {
       await updateProfile(auth.currentUser, {
-        displayName: data.username || auth.currentUser.displayName,
+        displayName: data.name || auth.currentUser.displayName,
         photoURL: data.photoURL || auth.currentUser.photoURL
       });
     }
@@ -106,17 +126,14 @@ export const logoutUser = async () => {
   const authUser = auth.currentUser;
   if (authUser) {
     try {
-      // 1. Delete the FCM token from Firestore
-      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-      if (token) {
-        await deleteDoc(doc(db, 'users', authUser.uid, 'fcmTokens', token));
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+        if (token) {
+          await deleteDoc(doc(db, 'users', authUser.uid, 'fcmTokens', token));
+        }
+        await deleteToken(messaging);
       }
 
-      // 2. Deregister from Firebase Messaging Service directly
-      const { deleteToken } = require('firebase/messaging');
-      await deleteToken(messaging);
-
-      // 3. Unregister the Service Worker entirely (clears everything, including notifications)
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (let registration of registrations) {
@@ -291,7 +308,7 @@ export const sendNotificationToUser = async (targetEmail, title, body, dataOptio
 
 
       const apiUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'https://nust-marketplace.vercel.app/api/send-notification'
+        ? 'https://mhenzo.vercel.app/api/send-notification'
         : '/api/send-notification';
 
       const controller = new AbortController();

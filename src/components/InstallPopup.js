@@ -8,31 +8,52 @@ const InstallPopup = ({ triggerAction }) => {
     const { showInstallPrompt, isInstallAvailable, isAppInstalled } = useInstallPrompt();
     const [isVisible, setIsVisible] = useState(false);
     const [step, setStep] = useState('install'); // 'install' | 'notify' | 'done'
+    const [installEventTimeoutFired, setInstallEventTimeoutFired] = useState(false);
 
     useEffect(() => {
-        // Logic to determine if we should show the popup
-        // triggerAction is a prop that changes (e.g. timestamp) when a significant action happens
-        if (triggerAction && !isAppInstalled) {
-            // Check if user has already dismissed it recently (localStorage) to be "non-annoying"
+        // Safe timeout to determine if browser simply doesn't support PWA install
+        const timer = setTimeout(() => setInstallEventTimeoutFired(true), 2500);
+        return () => clearTimeout(timer);
+    }, []);
+
+    useEffect(() => {
+        if (triggerAction) {
             const lastDismissed = localStorage.getItem('installPromptDismissed');
             const now = Date.now();
-            if (!lastDismissed || (now - parseInt(lastDismissed) > 24 * 60 * 60 * 1000)) { // 24 hours cooldown
-                if (isInstallAvailable) {
+            const cooldownPassed = !lastDismissed || (now - parseInt(lastDismissed) > 24 * 60 * 60 * 1000); // 24 hours cooldown
+
+            if (cooldownPassed) {
+                if (isAppInstalled && Notification.permission === 'default') {
+                    // Ask for notifications if app is already installed natively
+                    setIsVisible(true);
+                    setStep('notify');
+                } else if (!isAppInstalled && isInstallAvailable) {
+                    // If install available and not installed, prompt to install.
                     setIsVisible(true);
                     setStep('install');
-                } else if (Notification.permission === 'default') {
-                    // If app already installed or simple browser, maybe just ask for notifications directly
+                } else if (!isAppInstalled && !isInstallAvailable && installEventTimeoutFired && Notification.permission === 'default') {
+                    // If it's been 2.5s and `isInstallAvailable` is STILL false, they are likely 
+                    // on Firefox/Desktop Safari or a browser that doesn't support PWAs.
+                    // Fallback to safely just asking for notifications.
                     setIsVisible(true);
                     setStep('notify');
                 }
             }
         }
-    }, [triggerAction, isInstallAvailable, isAppInstalled]);
+    }, [triggerAction, isInstallAvailable, isAppInstalled, installEventTimeoutFired]);
 
     const handleInstallClick = async () => {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        console.log(`[PWA Debug] Install Context - Standalone: ${isStandalone}`);
+
         const installed = await showInstallPrompt();
         if (installed) {
-            setStep('notify'); // Move to notification step after install
+            console.log("[PWA Debug] App Installed successfully! Launching in standalone context...");
+            // Do NOT switch to 'notify' step here! Let the new PWA window handle notifications.
+            setIsVisible(false);
+        } else {
+            console.log("[PWA Debug] App Install dismissed. Falling back to notification prompt in browser...");
+            setStep('notify'); // Move to notification step if skipped
         }
     };
 
@@ -43,6 +64,8 @@ const InstallPopup = ({ triggerAction }) => {
             await requestNotificationPermission(null);
         }
         setIsVisible(false);
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        localStorage.setItem('fcm_context', isStandalone ? 'PWA' : 'Browser');
         localStorage.setItem('notificationsEnabled', 'true');
     };
 

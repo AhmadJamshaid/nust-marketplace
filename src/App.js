@@ -15,6 +15,7 @@ import {
   confirmReset, updateListing, reloadUser, searchUsersInDb, getAllUsers, getUserProfile,
   listenToUserChats, validatePassword, requestNotificationPermission, sendNotificationToUser, getChatMetadata, onMessageListener
 } from './firebaseFunctions';
+import { updateProfile } from 'firebase/auth';
 import InstallPopup from './components/InstallPopup';
 import { useInstallPrompt } from './context/InstallContext';
 
@@ -113,6 +114,7 @@ export default function App() {
   const [isForgot, setIsForgot] = useState(false);
   const [resetCode, setResetCode] = useState(null); // URL Code
   const [newResetPassword, setNewResetPassword] = useState(''); // For New Password Input
+  const [confirmResetPassword, setConfirmResetPassword] = useState(''); // Confirm Reset
   const [isResetPasswordValid, setIsResetPasswordValid] = useState(false); // Valid Format?
 
 
@@ -248,6 +250,12 @@ export default function App() {
       if (u) {
         const profile = await getPublicProfile(u.email);
         setUserProfileData(profile);
+        
+        // Silently correct display name to full name for returning users
+        if (profile?.name && u.displayName !== profile.name) {
+          updateProfile(u, { displayName: profile.name }).catch(console.error);
+        }
+
         // Trigger Install/Notify Popup on successful login
         setInstallTrigger(Date.now());
 
@@ -269,7 +277,19 @@ export default function App() {
         // ✅ AUTO-REFRESH NOTIFICATION TOKEN
         // Ensure Firestore has the latest token for this device to prevent 410 Errors
         if (Notification.permission === 'granted') {
-          requestNotificationPermission(u.uid).catch(e => console.warn("Token auto-refresh failed:", e));
+          const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+          const currentContext = isStandalone ? 'PWA' : 'Browser';
+          const savedContext = localStorage.getItem('fcm_context');
+          
+          // Force regenerate if moving from Browser to PWA without fresh token
+          const forceRegenerate = savedContext && savedContext !== currentContext;
+          if (forceRegenerate) {
+              console.log(`[PWA Debug] Context changed from ${savedContext} to ${currentContext}. Forcing token regeneration.`);
+          }
+          
+          requestNotificationPermission(u.uid, forceRegenerate).then(() => {
+              localStorage.setItem('fcm_context', currentContext);
+          }).catch(e => console.warn("Token auto-refresh failed:", e));
         }
       }
       setIsAuthChecking(false);
@@ -709,7 +729,7 @@ export default function App() {
       let newPhotoURL = user.photoURL;
       if (editPic) newPhotoURL = await uploadImageToCloudinary(editPic);
       const updatedData = {
-        username: editName || user.displayName,
+        name: editName || user.displayName, // Overwrite their real Full Name instead of username!
         whatsapp: editPhone || userProfileData.whatsapp,
         department: editDept || userProfileData.department,
         photoURL: newPhotoURL
@@ -734,9 +754,11 @@ export default function App() {
   const handleEnableNotifications = async () => {
     if (!user) return;
     try {
-      const permission = await requestNotificationPermission(user.uid);
+      const permission = await requestNotificationPermission(user.uid, true); // Force regenerate on manual click to fix any stuck tokens
       if (permission) {
         setNotifPermission('granted');
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        localStorage.setItem('fcm_context', isStandalone ? 'PWA' : 'Browser');
         alert("✅ Notifications Enabled! Device Registered.");
       }
     } catch (error) {
@@ -994,12 +1016,17 @@ export default function App() {
                 // --- RESET PASSWORD FORM (With Code) ---
                 <form onSubmit={async (e) => {
                   e.preventDefault();
+                  if (newResetPassword !== confirmResetPassword) {
+                    return alert("Passwords do not match");
+                  }
                   try {
                     validatePassword(newResetPassword);
                     await confirmReset(resetCode, newResetPassword);
                     alert("Password Reset Successful! You can now login.");
                     setIsForgot(false);
                     setResetCode(null);
+                    setNewResetPassword('');
+                    setConfirmResetPassword('');
                     window.location.href = window.location.origin; // Clear URL
                   } catch (err) {
                     alert(err.message);
@@ -1008,16 +1035,22 @@ export default function App() {
                   <PasswordInput
                     value={newResetPassword}
                     onChange={e => setNewResetPassword(e.target.value)}
-                    placeholder="New Strong Password"
+                    placeholder="New Password"
                     onValidation={setIsResetPasswordValid}
                   />
+                  <PasswordInput
+                    value={confirmResetPassword}
+                    onChange={e => setConfirmResetPassword(e.target.value)}
+                    placeholder="Confirm New Password"
+                    onValidation={() => {}}
+                  />
                   <button
-                    disabled={!isResetPasswordValid}
+                    disabled={!isResetPasswordValid || !confirmResetPassword || newResetPassword !== confirmResetPassword}
                     className="w-full py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Change Password
                   </button>
-                  <button type="button" onClick={() => { setIsForgot(false); setResetCode(null); }} className="w-full text-sm text-gray-400 hover:text-white">Cancel</button>
+                  <button type="button" onClick={() => { setIsForgot(false); setResetCode(null); setNewResetPassword(''); setConfirmResetPassword(''); }} className="w-full text-sm text-gray-400 hover:text-white">Cancel</button>
                 </form>
               ) : (
                 // --- SEND EMAIL FORM ---
@@ -1258,7 +1291,7 @@ export default function App() {
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase mb-2">Category</p>
                   <div className="flex gap-2 flex-wrap">
-                    {CATEGORIES.map(cat => (
+                    {['All', ...CATEGORIES].map(cat => (
                       <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCategory === cat ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg' : 'bg-[#15161a] text-gray-400'}`}>
                         {cat}
                       </button>
